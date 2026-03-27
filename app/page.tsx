@@ -107,6 +107,30 @@ const translations = {
   }
 };
 
+// Direct API call to Remove.bg
+const processWithRemoveBg = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('image_file', file);
+  formData.append('size', 'auto');
+  formData.append('format', 'png');
+
+  const response = await fetch('https://api.remove.bg/v1.0/removebg', {
+    method: 'POST',
+    headers: {
+      'X-Api-Key': 'ZVPuP9RmbPnUoGX6duU3wh9m',
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || 'Failed to remove background');
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+};
+
 export default function Home() {
   const [lang, setLang] = useState<Language>('en');
   const [mounted, setMounted] = useState(false);
@@ -131,20 +155,13 @@ export default function Home() {
 
   const processImage = async (file: File) => {
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const response = await fetch('/api/remove-bg', { method: 'POST', body: formData });
-      const data = await response.json();
-      if (data.success) {
-        setImageState((prev) => ({ ...prev, result: data.data.resultUrl, isProcessing: false }));
-        toast.success(t.success);
-      } else {
-        setImageState((prev) => ({ ...prev, isProcessing: false }));
-        toast.error(data.error || t.errorFailed);
-      }
-    } catch {
+      const resultUrl = await processWithRemoveBg(file);
+      setImageState((prev) => ({ ...prev, result: resultUrl, isProcessing: false }));
+      toast.success(t.success);
+    } catch (error) {
+      console.error('Remove bg error:', error);
       setImageState((prev) => ({ ...prev, isProcessing: false }));
-      toast.error(t.errorProcess);
+      toast.error(t.errorFailed);
     }
   };
 
