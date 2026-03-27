@@ -40,16 +40,17 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await imageFile.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
 
+    const removeBgFormData = new FormData();
+    removeBgFormData.append('image_file_b64', base64Image);
+    removeBgFormData.append('size', 'auto');
+    removeBgFormData.append('format', 'png');
+
     const removeBgResponse = await fetch('https://api.remove.bg/v1.0/removebg', {
       method: 'POST',
       headers: {
         'X-Api-Key': apiKey,
       },
-      formData: {
-        image_file_b64: base64Image,
-        size: 'auto',
-        format: 'png',
-      },
+      body: removeBgFormData,
     });
 
     if (!removeBgResponse.ok) {
