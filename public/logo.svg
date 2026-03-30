@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background circle -->
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fbbf24;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f97316;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.6" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Main circle background -->
+  <circle cx="100" cy="100" r="95" fill="url(#grad1)" />
+  
+  <!-- Magic wand -->
+  <rect x="45" y="140" width="12" height="50" rx="6" fill="url(#grad2)" transform="rotate(-45, 100, 100)" />
+  <rect x="130" y="45" width="12" height="50" rx="6" fill="url(#grad2)" transform="rotate(45, 100, 100)" />
+  
+  <!-- Star/sparkle 1 -->
+  <path d="M100 30 L103 40 L113 40 L105 47 L108 57 L100 50 L92 57 L95 47 L87 40 L97 40 Z" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Star/sparkle 2 -->
+  <path d="M35 75 L37 80 L42 80 L38 84 L40 89 L35 86 L30 89 L32 84 L28 80 L33 80 Z" fill="#ffffff" opacity="0.7"/>
+  
+  <!-- Star/sparkle 3 -->
+  <path d="M165 75 L167 80 L172 80 L168 84 L170 89 L165 86 L160 89 L162 84 L158 80 L163 80 Z" fill="#ffffff" opacity="0.7"/>
+  
+  <!-- Image frame (representing photo removal) -->
+  <rect x="55" y="65" width="90" height="70" rx="8" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.9"/>
+  
+  <!-- Mountain/landscape inside frame -->
+  <path d="M55 120 L75 95 L95 115 L115 85 L145 120 Z" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Sun inside frame -->
+  <circle cx="120" cy="85" r="12" fill="#fbbf24"/>
+  
+  <!-- Magic sparkle effect on removed background -->
+  <circle cx="45" cy="55" r="4" fill="#ffffff" opacity="0.8"/>
+  <circle cx="155" cy="145" r="3" fill="#ffffff" opacity="0.6"/>
+  <circle cx="40" cy="130" r="3" fill="#ffffff" opacity="0.7"/>
+  <circle cx="160" cy="70" r="4" fill="#ffffff" opacity="0.8"/>
+</svg>

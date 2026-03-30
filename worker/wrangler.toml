@@ -1,6 +1,7 @@
-name = "image-background-remover"
+name = "image-toolbox-api"
+main = "index.js"
 compatibility_date = "2026-03-27"
-pages_build_output_dir = ".next"
+workers_dev = true
 
 # D1 Database binding
 [[d1_databases]]
@@ -8,11 +9,8 @@ binding = "DB"
 database_name = "image-toolbox-users"
 database_id = "4babd4a4-f671-4cef-ba09-41c8fbf130c1"
 
-# Environment variables for Google OAuth
+# Environment variables
 [vars]
 GOOGLE_CLIENT_ID = "300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com"
 GITHUB_CLIENT_ID = "Ov23liIWfTJGMpqRArKK"
-
-# GitHub OAuth secrets
-# For production, use: wrangler secret put GITHUB_CLIENT_SECRET
 GITHUB_CLIENT_SECRET = "02274a5074582b097bfcb3df37e19b4eaab36805"
