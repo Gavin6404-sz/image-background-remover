@@ -30,6 +30,11 @@ interface ImageState {
   isProcessing: boolean;
 }
 
+interface PendingImage {
+  file: File;
+  preview: string;
+}
+
 const translations = {
   en: {
     title: 'Background Remover',
@@ -331,6 +336,12 @@ export default function Home() {
         localStorage.setItem('userEmail', data.user.email);
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
+        
+        // Auto-process pending image if exists
+        if (pendingImage) {
+          processImage(pendingImage.file);
+          setPendingImage(null);
+        }
       } else {
         toast.error(t.loginError || 'Login failed');
       }
@@ -403,6 +414,12 @@ export default function Home() {
         localStorage.setItem('userEmail', data.user.email);
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
+        
+        // Auto-process pending image if exists
+        if (pendingImage) {
+          processImage(pendingImage.file);
+          setPendingImage(null);
+        }
       } else {
         console.error('No user in response:', data);
         toast.error(t.loginError);
@@ -443,6 +460,7 @@ export default function Home() {
   };
 
   const [imageState, setImageState] = useState<ImageState>({ original: null, result: null, isProcessing: false });
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<BackgroundColor>('transparent');
   const [isDragging, setIsDragging] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -465,6 +483,9 @@ export default function Home() {
       setShowLoginDialog(true);
       return;
     }
+
+    // Set processing state
+    setImageState((prev) => ({ ...prev, isProcessing: true }));
 
     // Start processing timer
     setProcessingSeconds(0);
@@ -504,10 +525,29 @@ export default function Home() {
   const handleFileSelect = useCallback((file: File) => {
     if (!['image/jpeg', 'image/png'].includes(file.type)) { toast.error(t.errorType); return; }
     if (file.size > 10 * 1024 * 1024) { toast.error(t.errorSize); return; }
+    
     const reader = new FileReader();
-    reader.onload = (e) => { setImageState({ original: e.target?.result as string, result: null, isProcessing: true }); setZoom(1); setPan({ x: 0, y: 0 }); processImage(file); };
+    reader.onload = (e) => { 
+      const preview = e.target?.result as string;
+      // Store pending image
+      setPendingImage({ file, preview });
+      // Show preview immediately
+      setImageState({ original: preview, result: null, isProcessing: false });
+      setZoom(1); 
+      setPan({ x: 0, y: 0 }); 
+      
+      // Check if logged in and process immediately
+      const currentToken = sessionToken || localStorage.getItem('sessionToken');
+      if (currentToken) {
+        processImage(file);
+      } else {
+        // Not logged in - show login dialog, don't process yet
+        toast.error(lang === 'en' ? 'Please sign in to process images' : '请先登录后再处理图片');
+        setShowLoginDialog(true);
+      }
+    };
     reader.readAsDataURL(file);
-  }, [t]);
+  }, [t, lang, sessionToken]);
 
   const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileSelect(f); }, [handleFileSelect]);
   const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
