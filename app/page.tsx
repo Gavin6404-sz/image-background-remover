@@ -269,6 +269,15 @@ export default function Home() {
       verifySession(savedToken);
     }
     
+    // Listen for GitHub OAuth callback from popup
+    const handleGitHubMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'GITHUB_SESSION' && event.data?.token) {
+        verifyGitHubSession(event.data.token);
+      }
+    };
+    window.addEventListener('message', handleGitHubMessage);
+    
     // Check for GitHub OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
     const githubSuccess = urlParams.get('github_success');
@@ -278,7 +287,15 @@ export default function Home() {
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      // Verify and set the GitHub session
+      // Check if opened from parent tab (GitHub OAuth popup)
+      if (window.opener && !window.opener.closed) {
+        // Send session to parent tab and close this popup
+        window.opener.postMessage({ type: 'GITHUB_SESSION', token: githubToken }, window.location.origin);
+        window.close();
+        return;
+      }
+      
+      // Verify and set the GitHub session (for direct access case)
       verifyGitHubSession(githubToken);
     }
     
