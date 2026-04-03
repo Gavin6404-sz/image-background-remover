@@ -11,8 +11,8 @@ database_id = "4babd4a4-f671-4cef-ba09-41c8fbf130c1"
 # Environment variables for Google OAuth
 [vars]
 GOOGLE_CLIENT_ID = "300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com"
-GITHUB_CLIENT_ID = "Ov23liIWfTJGMpqRArKK"
+GITHUB_CLIENT_ID = "Ov23li7icTBHnxxbd2ST"
 
 # GitHub OAuth secrets
 # For production, use: wrangler secret put GITHUB_CLIENT_SECRET
-GITHUB_CLIENT_SECRET = "02274a5074582b097bfcb3df37e19b4eaab36805"
+GITHUB_CLIENT_SECRET = "c2cec31679ce3dec9aa3a980e48c656bf1ab5adf"

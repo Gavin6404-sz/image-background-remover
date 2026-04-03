@@ -271,20 +271,19 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     if (!sessionToken) return;
     setLoggingOut(true);
-    try {
-      await fetch(`${API_BASE_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${sessionToken}` },
-      });
-    } catch {
-      // Continue with logout even if API fails
-    } finally {
-      localStorage.removeItem('sessionToken');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('userPicture');
-      window.location.href = '/';
-    }
+    
+    // Fire and forget - don't wait for API response
+    fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    }).catch(() => {}); // Ignore errors
+    
+    // Clear localStorage and redirect immediately
+    localStorage.removeItem('sessionToken');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userPicture');
+    window.location.href = '/';
   };
 
   const totalPages = Math.ceil(historyTotal / PAGE_SIZE);

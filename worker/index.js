@@ -427,22 +427,33 @@ export default {
         let quotaResult = null;
         
         // Pre-check quota availability (don't deduct yet)
-        const quotaCheck = await checkQuotaAvailable(userId, env);
-        if (!quotaCheck.available) {
+        try {
+          const quotaCheck = await checkQuotaAvailable(userId, env);
+          if (!quotaCheck.available) {
+            return new Response(JSON.stringify({ 
+              error: 'Insufficient quota', 
+              code: 'insufficient_quota',
+              details: quotaCheck,
+            }), {
+              status: 402,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          quotaResult = quotaCheck;
+        } catch (err) {
+          console.error('Quota check error:', err);
           return new Response(JSON.stringify({ 
-            error: 'Insufficient quota', 
-            code: 'insufficient_quota',
-            details: quotaCheck,
+            error: 'Quota check failed: ' + err.message, 
+            code: 'quota_check_error',
           }), {
-            status: 402,
+            status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        quotaResult = quotaCheck;
 
         // Call Remove.bg API FIRST
         const removeBgFormData = new FormData();
-        removeBgFormData.append('image_file', new File([imageData], 'image.png', 'image/png'));
+        removeBgFormData.append('image_file', new File([imageData], 'image.png', { type: 'image/png' }));
         removeBgFormData.append('size', 'auto');
         removeBgFormData.append('format', format);
 
@@ -463,7 +474,13 @@ export default {
           }
 
           const resultBuffer = await removeBgResponse.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(resultBuffer)));
+          // Convert ArrayBuffer to base64 without spreading (avoid stack overflow)
+          const bytes = new Uint8Array(resultBuffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          const base64 = btoa(binary);
           removeBgResult = `data:image/png;base64,${base64}`;
         } catch (err) {
           console.error('Remove.bg processing error:', err);
