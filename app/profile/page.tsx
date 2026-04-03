@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, User, Loader2, Check, X, ChevronLeft, ChevronRight, Filter, Save } from 'lucide-react';
+import { ArrowLeft, User, Loader2, Check, X, ChevronLeft, ChevronRight, Filter, Save, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -89,6 +89,7 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [savingBio, setSavingBio] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const PAGE_SIZE = 10;
 
@@ -254,6 +255,25 @@ export default function ProfilePage() {
     }
   };
 
+  const handleLogout = async () => {
+    if (!sessionToken) return;
+    setLoggingOut(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+    } catch {
+      // Continue with logout even if API fails
+    } finally {
+      localStorage.removeItem('sessionToken');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userEmail');
+      localStorage.removeItem('userPicture');
+      window.location.href = '/';
+    }
+  };
+
   const totalPages = Math.ceil(historyTotal / PAGE_SIZE);
 
   if (!mounted) {
@@ -285,7 +305,18 @@ export default function ProfilePage() {
             </div>
             <span className="text-lg font-bold text-foreground">个人中心</span>
           </div>
-          <div className="w-24" />
+          <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300 gap-2 font-medium"
+              >
+                {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                退出登录
+              </Button>
+            </div>
         </div>
       </header>
 
