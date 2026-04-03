@@ -154,21 +154,37 @@ const translations = {
 const GOOGLE_CLIENT_ID = '300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com';
 const API_BASE_URL = 'https://api.imagetoolbox.online';
 
-const processWithRemoveBg = async (file: File): Promise<string> => {
+// Process image via worker API (handles auth + quota deduction)
+const processImageViaApi = async (file: File, sessionToken: string): Promise<{ result: string; quotaType: string; remaining: number }> => {
   const formData = new FormData();
-  formData.append('image_file', file);
-  formData.append('size', 'auto');
+  formData.append('image', file);
   formData.append('format', 'png');
 
-  const response = await fetch('https://api.remove.bg/v1.0/removebg', {
+  const response = await fetch(`${API_BASE_URL}/api/process`, {
     method: 'POST',
-    headers: { 'X-Api-Key': 'ZVPuP9RmbPnUoGX6duU3wh9m' },
+    headers: {
+      'Authorization': `Bearer ${sessionToken}`,
+    },
     body: formData,
   });
 
-  if (!response.ok) throw new Error('Failed to remove background');
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  const data: { error?: string; success?: boolean; result?: string; quota_type?: string; remaining?: number } = await response.json();
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('NOT_AUTHENTICATED');
+    }
+    if (response.status === 402) {
+      throw new Error('INSUFFICIENT_QUOTA');
+    }
+    throw new Error(data.error || 'Processing failed');
+  }
+
+  return {
+    result: data.result as string,
+    quotaType: data.quota_type as string,
+    remaining: data.remaining as number,
+  };
 };
 
 declare global {
@@ -441,6 +457,15 @@ export default function Home() {
   const ESTIMATED_TIME = 20;
 
   const processImage = async (file: File) => {
+    // Check auth first
+    const currentToken = sessionToken || localStorage.getItem('sessionToken');
+    if (!currentToken) {
+      setImageState((prev) => ({ ...prev, isProcessing: false }));
+      toast.error(lang === 'en' ? 'Please sign in to process images' : '请先登录后再处理图片');
+      setShowLoginDialog(true);
+      return;
+    }
+
     // Start processing timer
     setProcessingSeconds(0);
     processingTimerRef.current = setInterval(() => {
@@ -448,12 +473,25 @@ export default function Home() {
     }, 1000);
     
     try {
-      const resultUrl = await processWithRemoveBg(file);
+      const { result: resultUrl, quotaType, remaining } = await processImageViaApi(file, currentToken);
       setImageState((prev) => ({ ...prev, result: resultUrl, isProcessing: false }));
       toast.success(t.success);
-    } catch (error) { 
+      // Show remaining quota info
+      const quotaLabel = quotaType === 'free' ? (lang === 'en' ? 'Free quota' : '免费额度') :
+                         quotaType === 'subscription' ? (lang === 'en' ? 'Subscription' : '订阅额度') :
+                         (lang === 'en' ? 'Points' : '积分');
+      toast.success(`${quotaLabel}: ${remaining} ${lang === 'en' ? 'remaining' : '剩余'}`);
+    } catch (error: any) { 
+      const msg = error.message || '';
+      if (msg === 'NOT_AUTHENTICATED') {
+        toast.error(lang === 'en' ? 'Session expired, please sign in again' : '登录已过期，请重新登录');
+        setShowLoginDialog(true);
+      } else if (msg === 'INSUFFICIENT_QUOTA') {
+        toast.error(lang === 'en' ? 'Insufficient quota! Please subscribe or purchase points.' : '额度不足！请订阅或购买积分。');
+      } else {
+        toast.error(t.errorFailed || '背景移除失败，请重试');
+      }
       setImageState((prev) => ({ ...prev, isProcessing: false, result: null })); 
-      toast.error(t.errorFailed || '背景移除失败，请重试');
     } finally {
       if (processingTimerRef.current) {
         clearInterval(processingTimerRef.current);

@@ -389,6 +389,112 @@ export default {
         });
       }
 
+      // ========== Image Processing Endpoint ==========
+
+      // POST /api/process - Process image with Remove.bg and deduct quota
+      if (path.endsWith('/api/process') && request.method === 'POST') {
+        const userId = await getUserIdFromRequest(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized', code: 'not_authenticated' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Parse multipart form data
+        let imageData;
+        let format = 'png';
+        try {
+          const formData = await request.formData();
+          const imageFile = formData.get('image');
+          if (!imageFile || !(imageFile instanceof File)) {
+            return new Response(JSON.stringify({ error: 'No image provided', code: 'no_image' }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          imageData = await imageFile.arrayBuffer();
+          format = formData.get('format') || 'png';
+        } catch (err) {
+          return new Response(JSON.stringify({ error: 'Failed to parse form data', code: 'parse_error' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Deduct quota based on priority: free > subscription > points
+        const quotaResult = await deductQuota(userId, env);
+        if (!quotaResult.success) {
+          return new Response(JSON.stringify({ 
+            error: 'Insufficient quota', 
+            code: 'insufficient_quota',
+            details: quotaResult,
+          }), {
+            status: 402,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Call Remove.bg API
+        const removeBgFormData = new FormData();
+        removeBgFormData.append('image_file', new File([imageData], 'image.png', 'image/png'));
+        removeBgFormData.append('size', 'auto');
+        removeBgFormData.append('format', format);
+
+        let removeBgResult;
+        try {
+          const removeBgResponse = await fetch('https://api.remove.bg/v1.0/removebg', {
+            method: 'POST',
+            headers: {
+              'X-Api-Key': env.REMOVE_BG_API_KEY || 'ZVPuP9RmbPnUoGX6duU3wh9m',
+            },
+            body: removeBgFormData,
+          });
+
+          if (!removeBgResponse.ok) {
+            const errorText = await removeBgResponse.text();
+            console.error('Remove.bg API error:', errorText);
+            throw new Error('Remove.bg API failed');
+          }
+
+          const resultBuffer = await removeBgResponse.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(resultBuffer)));
+          removeBgResult = `data:image/png;base64,${base64}`;
+        } catch (err) {
+          console.error('Remove.bg processing error:', err);
+          // Record failed attempt
+          await env.DB
+            .prepare('INSERT INTO processing_history (user_id, quota_type, credits_used, status, error_message) VALUES (?, ?, ?, ?, ?)')
+            .bind(userId, quotaResult.quotaType, 1, 'failed', 'Remove.bg API error')
+            .run();
+          return new Response(JSON.stringify({ 
+            error: 'Failed to process image', 
+            code: 'processing_failed',
+            quota_type: quotaResult.quotaType,
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Record successful processing
+        await env.DB
+          .prepare('INSERT INTO processing_history (user_id, quota_type, credits_used, status) VALUES (?, ?, ?, ?)')
+          .bind(userId, quotaResult.quotaType, 1, 'success')
+          .run();
+
+        return new Response(JSON.stringify({
+          success: true,
+          result: removeBgResult,
+          quota_type: quotaResult.quotaType,
+          remaining: quotaResult.remaining,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // ========== Plans Endpoints ==========
+
       // GET /api/plans/points - Get point packages
       if (path.endsWith('/api/plans/points') && request.method === 'GET') {
         const packages = await env.DB
@@ -423,6 +529,85 @@ export default {
     }
   }
 };
+
+// ========== Quota Deduction Helper ==========
+async function deductQuota(userId, env) {
+  // Step 1: Check free quota
+  const freeTx = await env.DB
+    .prepare('SELECT SUM(amount) as total FROM quota_transactions WHERE user_id = ? AND quota_type = ?')
+    .bind(userId, 'free')
+    .first();
+  const freeUsed = Math.abs(freeTx?.total || 0);
+  const freeRemaining = Math.max(0, 3 - freeUsed);
+
+  if (freeRemaining > 0) {
+    // Deduct from free quota
+    const newBalance = freeRemaining - 1;
+    await env.DB
+      .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+      .bind(userId, -1, newBalance, 'free', 'Process image')
+      .run();
+    return { success: true, quotaType: 'free', remaining: newBalance };
+  }
+
+  // Step 2: Check subscription quota
+  const subscription = await env.DB
+    .prepare('SELECT us.*, sp.plan_name, sp.quota_monthly FROM user_subscriptions us JOIN subscription_plans sp ON us.plan_id = sp.id WHERE us.user_id = ? AND us.status = ?')
+    .bind(userId, 'active')
+    .first();
+
+  if (subscription) {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    let monthlyUsed = subscription.monthly_used || 0;
+
+    // Reset if new month
+    if (subscription.last_reset_date !== currentMonth) {
+      monthlyUsed = 0;
+      await env.DB
+        .prepare('UPDATE user_subscriptions SET monthly_used = 0, last_reset_date = ? WHERE user_id = ?')
+        .bind(currentMonth, userId)
+        .run();
+    }
+
+    if (monthlyUsed < subscription.quota_monthly) {
+      const newUsed = monthlyUsed + 1;
+      const remaining = subscription.quota_monthly - newUsed;
+      await env.DB
+        .prepare('UPDATE user_subscriptions SET monthly_used = ? WHERE user_id = ?')
+        .bind(newUsed, userId)
+        .run();
+      // Record transaction
+      await env.DB
+        .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+        .bind(userId, -1, remaining, 'subscription', 'Process image')
+        .run();
+      return { success: true, quotaType: 'subscription', remaining };
+    }
+  }
+
+  // Step 3: Check points
+  const points = await env.DB
+    .prepare('SELECT * FROM user_points WHERE user_id = ?')
+    .bind(userId)
+    .first();
+
+  if (points && points.points_balance > 0) {
+    const newBalance = points.points_balance - 1;
+    await env.DB
+      .prepare('UPDATE user_points SET points_balance = ?, updated_at = ? WHERE user_id = ?')
+      .bind(newBalance, Math.floor(Date.now() / 1000), userId)
+      .run();
+    // Record transaction
+    await env.DB
+      .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+      .bind(userId, -1, newBalance, 'points', 'Process image')
+      .run();
+    return { success: true, quotaType: 'points', remaining: newBalance };
+  }
+
+  // No quota available
+  return { success: false, error: 'insufficient_quota' };
+}
 
 // Helper functions
 function base64UrlDecode(str) {
