@@ -348,7 +348,6 @@ export default function Home() {
   }, [showLoginDialog]);
 
   const handleCredentialResponse = async (response: { credential: string }) => {
-    setIsLoggingIn(true);
     setShowLoginDialog(false);
     
     try {
@@ -433,7 +432,6 @@ export default function Home() {
 
   // Verify GitHub session token
   const verifyGitHubSession = async (token: string) => {
-    setIsLoggingIn(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` },
