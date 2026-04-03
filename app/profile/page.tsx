@@ -43,8 +43,12 @@ type HistoryFilter = 'all' | 'free' | 'subscription' | 'points' | 'success' | 'f
 function formatDate(timestamp: number | string): string {
   let date: Date;
   if (typeof timestamp === 'string') {
-    // Handle string format "2026-03-27 12:31:10"
-    date = new Date(timestamp.replace(' ', 'T') + 'Z');
+    // Handle ISO string "2026-04-03T12:30:00.000Z" or "2026-03-27 12:31:10"
+    let str = timestamp;
+    if (!str.includes('T')) {
+      str = str.replace(' ', 'T') + 'Z';
+    }
+    date = new Date(str);
   } else {
     // Handle Unix timestamp (seconds)
     date = new Date(timestamp * 1000);
@@ -58,7 +62,13 @@ function formatDate(timestamp: number | string): string {
 function formatRelativeTime(timestamp: number | string): string {
   let timeMs: number;
   if (typeof timestamp === 'string') {
-    timeMs = new Date(timestamp.replace(' ', 'T') + 'Z').getTime();
+    // Handle ISO string format "2026-04-03T12:30:00.000Z" or "2026-03-27 12:31:10"
+    let str = timestamp;
+    if (!str.includes('T')) {
+      // Handle "2026-03-27 12:31:10" format
+      str = str.replace(' ', 'T') + 'Z';
+    }
+    timeMs = new Date(str).getTime();
   } else {
     timeMs = timestamp * 1000;
   }
