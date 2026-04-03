@@ -367,21 +367,13 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists
-        if (pendingImage) {
-          const fileToProcess = pendingImage.file;
-          setPendingImage(null); // Clear immediately
-          processImage(fileToProcess);
-        } else {
-          // Check sessionStorage for pending image (in case callback runs in different context)
-          const storedPreview = sessionStorage.getItem('pendingImagePreview');
-          if (storedPreview) {
-            sessionStorage.removeItem('pendingImagePreview');
-            sessionStorage.removeItem('pendingImageData');
-            const fileToProcess = dataURLtoFile(storedPreview);
-            processImage(fileToProcess);
-          }
-        }
+        // Clear any pending image state
+        setPendingImage(null);
+        sessionStorage.removeItem('pendingImagePreview');
+        sessionStorage.removeItem('pendingImageData');
+        
+        // Redirect to homepage after login
+        window.location.href = '/';
       } else {
         toast.error(t.loginError || 'Login failed');
       }
@@ -455,21 +447,13 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists
-        if (pendingImage) {
-          const fileToProcess = pendingImage.file;
-          setPendingImage(null); // Clear immediately
-          processImage(fileToProcess);
-        } else {
-          // Check sessionStorage for pending image
-          const storedPreview = sessionStorage.getItem('pendingImagePreview');
-          if (storedPreview) {
-            sessionStorage.removeItem('pendingImagePreview');
-            sessionStorage.removeItem('pendingImageData');
-            const fileToProcess = dataURLtoFile(storedPreview);
-            processImage(fileToProcess);
-          }
-        }
+        // Clear any pending image state
+        setPendingImage(null);
+        sessionStorage.removeItem('pendingImagePreview');
+        sessionStorage.removeItem('pendingImageData');
+        
+        // Redirect to homepage after login
+        window.location.href = '/';
       } else {
         console.error('No user in response:', data);
         toast.error(t.loginError);
