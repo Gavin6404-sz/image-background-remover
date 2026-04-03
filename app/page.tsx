@@ -159,6 +159,19 @@ const translations = {
 const GOOGLE_CLIENT_ID = '300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com';
 const API_BASE_URL = 'https://api.imagetoolbox.online';
 
+// Helper: Convert data URL to File object
+function dataURLtoFile(dataURL: string, filename: string = 'image.png'): File {
+  const arr = dataURL.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
+}
+
 // Process image via worker API (handles auth + quota deduction)
 const processImageViaApi = async (file: File, sessionToken: string): Promise<{ result: string; quotaType: string; remaining: number }> => {
   const formData = new FormData();
@@ -354,11 +367,20 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists - save to local var first
+        // Auto-process pending image if exists
         if (pendingImage) {
           const fileToProcess = pendingImage.file;
-          setPendingImage(null); // Clear immediately to prevent duplicates
+          setPendingImage(null); // Clear immediately
           processImage(fileToProcess);
+        } else {
+          // Check sessionStorage for pending image (in case callback runs in different context)
+          const storedPreview = sessionStorage.getItem('pendingImagePreview');
+          if (storedPreview) {
+            sessionStorage.removeItem('pendingImagePreview');
+            sessionStorage.removeItem('pendingImageData');
+            const fileToProcess = dataURLtoFile(storedPreview);
+            processImage(fileToProcess);
+          }
         }
       } else {
         toast.error(t.loginError || 'Login failed');
@@ -433,11 +455,20 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists - save to local var first
+        // Auto-process pending image if exists
         if (pendingImage) {
           const fileToProcess = pendingImage.file;
-          setPendingImage(null); // Clear immediately to prevent duplicates
+          setPendingImage(null); // Clear immediately
           processImage(fileToProcess);
+        } else {
+          // Check sessionStorage for pending image
+          const storedPreview = sessionStorage.getItem('pendingImagePreview');
+          if (storedPreview) {
+            sessionStorage.removeItem('pendingImagePreview');
+            sessionStorage.removeItem('pendingImageData');
+            const fileToProcess = dataURLtoFile(storedPreview);
+            processImage(fileToProcess);
+          }
         }
       } else {
         console.error('No user in response:', data);
@@ -548,7 +579,14 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = (e) => { 
       const preview = e.target?.result as string;
-      // Store pending image
+      // Store pending image data in sessionStorage (for cross-context access)
+      const pendingData = { preview, timestamp: Date.now() };
+      try {
+        sessionStorage.setItem('pendingImagePreview', preview);
+        sessionStorage.setItem('pendingImageData', JSON.stringify(pendingData));
+      } catch (e) {
+        console.error('Failed to save pending image to sessionStorage:', e);
+      }
       setPendingImage({ file, preview });
       // Show preview immediately
       setImageState({ original: preview, result: null, isProcessing: false });
