@@ -133,6 +133,9 @@ export default function ProfilePage() {
       const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        throw new Error('Failed to fetch user info');
+      }
       const data: { user?: UserInfo; success?: boolean } = await res.json();
       if (data.user) {
         setUser(data.user);
@@ -143,7 +146,7 @@ export default function ProfilePage() {
         localStorage.setItem('userPicture', data.user.picture || '');
       }
     } catch (err) {
-      toast.error('获取用户信息失败');
+      console.error('Fetch user info error:', err);
     } finally {
       setLoading(false);
     }
@@ -154,6 +157,9 @@ export default function ProfilePage() {
       const res = await fetch(`${API_BASE_URL}/api/user/quotas`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        throw new Error('Failed to fetch quotas');
+      }
       const data: QuotaData | { success: false } = await res.json();
       if ('success' in data && data.success === false) {
         // Use defaults if API not ready
@@ -165,7 +171,8 @@ export default function ProfilePage() {
       } else {
         setQuota(data as QuotaData);
       }
-    } catch {
+    } catch (err) {
+      console.error('Fetch quotas error:', err);
       setQuota({
         free: { used: 0, total: 3, remaining: 3 },
         subscription: { used: 0, total: 0, remaining: 0 },
@@ -188,13 +195,18 @@ export default function ProfilePage() {
       const res = await fetch(`${API_BASE_URL}/api/user/history?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data: { items?: HistoryItem[]; history?: HistoryItem[]; total?: number; success?: boolean } = await res.json();
-      if ('success' in data && data.success === false) {
+      if (!res.ok) {
         setHistory([]);
         setHistoryTotal(0);
       } else {
-        setHistory(data.items || data.history || []);
-        setHistoryTotal(data.total || 0);
+        const data: { items?: HistoryItem[]; history?: HistoryItem[]; total?: number; success?: boolean } = await res.json();
+        if ('success' in data && data.success === false) {
+          setHistory([]);
+          setHistoryTotal(0);
+        } else {
+          setHistory(data.items || data.history || []);
+          setHistoryTotal(data.total || 0);
+        }
       }
     } catch {
       setHistory([]);
