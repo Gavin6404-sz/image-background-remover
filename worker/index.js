@@ -80,7 +80,7 @@ export default {
         }
 
         const user = await env.DB
-          .prepare('SELECT id, email, name, picture FROM users WHERE session_token = ?')
+          .prepare('SELECT id, email, name, picture, created_at FROM users WHERE session_token = ?')
           .bind(sessionToken)
           .first();
 
