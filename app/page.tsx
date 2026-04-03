@@ -327,7 +327,6 @@ export default function Home() {
             size: 'large',
             text: 'signin_with',
             width: 300,
-            ux_mode: 'popup',
           });
           return true;
         }
