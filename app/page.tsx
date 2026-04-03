@@ -375,7 +375,7 @@ export default function Home() {
         sessionStorage.removeItem('pendingImageData');
         
         // Redirect immediately - don't wait for state updates
-        window.location.href = '/';
+        window.location.replace('/');
       } else {
         toast.error('Login failed');
         setIsLoggingIn(false);
@@ -452,7 +452,7 @@ export default function Home() {
         sessionStorage.removeItem('pendingImageData');
         
         // Redirect immediately - don't wait for state updates
-        window.location.href = '/';
+        window.location.replace('/');
       } else {
         toast.error('Login failed');
         setIsLoggingIn(false);
