@@ -172,9 +172,9 @@ export default {
           });
         }
 
-        // Get free quota transactions to calculate free usage
-        const freeQuota = await env.DB
-          .prepare('SELECT SUM(amount) as total FROM quota_transactions WHERE user_id = ? AND quota_type = ?')
+        // Get free quota transactions to calculate free usage (only negative = actual usage)
+        const freeUsage = await env.DB
+          .prepare('SELECT SUM(amount) as total FROM quota_transactions WHERE user_id = ? AND quota_type = ? AND amount < 0')
           .bind(userId, 'free')
           .first();
 
@@ -209,8 +209,8 @@ export default {
         return new Response(JSON.stringify({
           free: {
             total: 3,  // 注册赠送 3 次
-            used: Math.abs(freeQuota?.total || 0),
-            remaining: Math.max(0, 3 - Math.abs(freeQuota?.total || 0)),
+            used: Math.abs(freeUsage?.total || 0),
+            remaining: Math.max(0, 3 - Math.abs(freeUsage?.total || 0)),
           },
           subscription: subscription ? {
             plan_name: subscription.plan_name,
@@ -423,19 +423,24 @@ export default {
         }
 
         // Deduct quota based on priority: free > subscription > points
-        const quotaResult = await deductQuota(userId, env);
-        if (!quotaResult.success) {
+        // But ONLY if processing succeeds - we check quota availability first
+        let quotaResult = null;
+        
+        // Pre-check quota availability (don't deduct yet)
+        const quotaCheck = await checkQuotaAvailable(userId, env);
+        if (!quotaCheck.available) {
           return new Response(JSON.stringify({ 
             error: 'Insufficient quota', 
             code: 'insufficient_quota',
-            details: quotaResult,
+            details: quotaCheck,
           }), {
             status: 402,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
+        quotaResult = quotaCheck;
 
-        // Call Remove.bg API
+        // Call Remove.bg API FIRST
         const removeBgFormData = new FormData();
         removeBgFormData.append('image_file', new File([imageData], 'image.png', 'image/png'));
         removeBgFormData.append('size', 'auto');
@@ -462,21 +467,23 @@ export default {
           removeBgResult = `data:image/png;base64,${base64}`;
         } catch (err) {
           console.error('Remove.bg processing error:', err);
-          // Record failed attempt
+          // Record failed attempt - but do NOT deduct quota
           await env.DB
             .prepare('INSERT INTO processing_history (user_id, quota_type, credits_used, status, error_message) VALUES (?, ?, ?, ?, ?)')
-            .bind(userId, quotaResult.quotaType, 1, 'failed', 'Remove.bg API error')
+            .bind(userId, quotaResult.quotaType, 0, 'failed', 'Remove.bg API error')
             .run();
           return new Response(JSON.stringify({ 
             error: 'Failed to process image', 
             code: 'processing_failed',
-            quota_type: quotaResult.quotaType,
           }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
+        // Processing succeeded - NOW deduct quota
+        const deductResult = await doDeductQuota(userId, env, quotaResult.quotaType);
+        
         // Record successful processing
         await env.DB
           .prepare('INSERT INTO processing_history (user_id, quota_type, credits_used, status) VALUES (?, ?, ?, ?)')
@@ -487,7 +494,7 @@ export default {
           success: true,
           result: removeBgResult,
           quota_type: quotaResult.quotaType,
-          remaining: quotaResult.remaining,
+          remaining: deductResult.remaining,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -530,7 +537,111 @@ export default {
   }
 };
 
-// ========== Quota Deduction Helper ==========
+// ========== Quota Check (without deduction) ==========
+async function checkQuotaAvailable(userId, env) {
+  // Step 1: Check free quota
+  const freeTx = await env.DB
+    .prepare('SELECT SUM(amount) as total FROM quota_transactions WHERE user_id = ? AND quota_type = ? AND amount < 0')
+    .bind(userId, 'free')
+    .first();
+  const freeUsed = Math.abs(freeTx?.total || 0);
+  const freeRemaining = Math.max(0, 3 - freeUsed);
+
+  if (freeRemaining > 0) {
+    return { available: true, quotaType: 'free', remaining: freeRemaining };
+  }
+
+  // Step 2: Check subscription
+  const subscription = await env.DB
+    .prepare('SELECT us.*, sp.plan_name, sp.quota_monthly FROM user_subscriptions us JOIN subscription_plans sp ON us.plan_id = sp.id WHERE us.user_id = ? AND us.status = ?')
+    .bind(userId, 'active')
+    .first();
+
+  if (subscription) {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    let monthlyUsed = subscription.monthly_used || 0;
+
+    if (subscription.last_reset_date !== currentMonth) {
+      monthlyUsed = 0;
+    }
+
+    if (monthlyUsed < subscription.quota_monthly) {
+      return { available: true, quotaType: 'subscription', remaining: subscription.quota_monthly - monthlyUsed };
+    }
+  }
+
+  // Step 3: Check points
+  const points = await env.DB
+    .prepare('SELECT * FROM user_points WHERE user_id = ?')
+    .bind(userId)
+    .first();
+
+  if (points && points.points_balance > 0) {
+    return { available: true, quotaType: 'points', remaining: points.points_balance };
+  }
+
+  return { available: false };
+}
+
+// ========== Actually Deduct Quota ==========
+async function doDeductQuota(userId, env, quotaType) {
+  if (quotaType === 'free') {
+    const freeTx = await env.DB
+      .prepare('SELECT SUM(amount) as total FROM quota_transactions WHERE user_id = ? AND quota_type = ? AND amount < 0')
+      .bind(userId, 'free')
+      .first();
+    const freeUsed = Math.abs(freeTx?.total || 0);
+    const freeRemaining = Math.max(0, 3 - freeUsed);
+    const newBalance = freeRemaining - 1;
+    await env.DB
+      .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+      .bind(userId, -1, newBalance, 'free', 'Process image')
+      .run();
+    return { remaining: newBalance };
+  }
+  
+  if (quotaType === 'subscription') {
+    const subscription = await env.DB
+      .prepare('SELECT * FROM user_subscriptions WHERE user_id = ? AND status = ?')
+      .bind(userId, 'active')
+      .first();
+    if (subscription) {
+      const newUsed = (subscription.monthly_used || 0) + 1;
+      await env.DB
+        .prepare('UPDATE user_subscriptions SET monthly_used = ? WHERE user_id = ?')
+        .bind(newUsed, userId)
+        .run();
+      await env.DB
+        .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+        .bind(userId, -1, subscription.quota_monthly - newUsed, 'subscription', 'Process image')
+        .run();
+      return { remaining: subscription.quota_monthly - newUsed };
+    }
+  }
+  
+  if (quotaType === 'points') {
+    const points = await env.DB
+      .prepare('SELECT * FROM user_points WHERE user_id = ?')
+      .bind(userId)
+      .first();
+    if (points) {
+      const newBalance = points.points_balance - 1;
+      await env.DB
+        .prepare('UPDATE user_points SET points_balance = ?, updated_at = ? WHERE user_id = ?')
+        .bind(newBalance, Math.floor(Date.now() / 1000), userId)
+        .run();
+      await env.DB
+        .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+        .bind(userId, -1, newBalance, 'points', 'Process image')
+        .run();
+      return { remaining: newBalance };
+    }
+  }
+  
+  return { remaining: 0 };
+}
+
+// ========== Quota Deduction Helper (Legacy - for backwards compat) ==========
 async function deductQuota(userId, env) {
   // Step 1: Check free quota
   const freeTx = await env.DB
