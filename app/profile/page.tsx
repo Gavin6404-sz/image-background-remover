@@ -24,8 +24,8 @@ interface UserInfo {
 }
 
 interface QuotaData {
-  free: { used: number; total: number };
-  subscription: { used: number; total: number; plan?: string };
+  free: { used: number; total: number; remaining: number };
+  subscription: { used: number; total: number; remaining: number; plan?: string };
   points: { balance: number };
 }
 
@@ -145,8 +145,8 @@ export default function ProfilePage() {
       if ('success' in data && data.success === false) {
         // Use defaults if API not ready
         setQuota({
-          free: { used: 0, total: 3 },
-          subscription: { used: 0, total: 0 },
+          free: { used: 0, total: 3, remaining: 3 },
+          subscription: { used: 0, total: 0, remaining: 0 },
           points: { balance: 0 },
         });
       } else {
@@ -154,8 +154,8 @@ export default function ProfilePage() {
       }
     } catch {
       setQuota({
-        free: { used: 0, total: 3 },
-        subscription: { used: 0, total: 0 },
+        free: { used: 0, total: 3, remaining: 3 },
+        subscription: { used: 0, total: 0, remaining: 0 },
         points: { balance: 0 },
       });
     }
@@ -398,7 +398,7 @@ export default function ProfilePage() {
                 <div className="rounded-xl border-2 border-orange-100 bg-gradient-to-br from-orange-50 to-amber-50 p-4 text-center space-y-1">
                   <p className="text-xs text-orange-600 font-medium uppercase tracking-wide">免费额度</p>
                   <p className="text-2xl font-black text-orange-600">
-                    {quota ? `${quota.free.total - quota.free.used}/${quota.free.total}` : '—'}
+                    {quota ? `${quota.free.remaining}/${quota.free.total}` : '—'}
                   </p>
                   <p className="text-xs text-orange-500">剩余</p>
                 </div>
