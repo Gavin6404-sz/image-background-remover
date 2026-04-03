@@ -355,31 +355,28 @@ export default function Home() {
       
       const data: { success?: boolean; user?: User; sessionToken?: string; error?: string } = await res.json();
       
-      // Update UI immediately when we get user data
       if (data.user) {
-        setUser(data.user);
+        // Save to localStorage immediately
         if (data.sessionToken) {
-          setSessionToken(data.sessionToken);
           localStorage.setItem('sessionToken', data.sessionToken);
         }
-        localStorage.setItem('userName', data.user.name);
-        localStorage.setItem('userEmail', data.user.email);
+        localStorage.setItem('userName', data.user.name || '');
+        localStorage.setItem('userEmail', data.user.email || '');
         localStorage.setItem('userPicture', data.user.picture || '');
-        toast.success(t.loginSuccess);
         
-        // Clear any pending image state
+        // Clear pending state
         setPendingImage(null);
         sessionStorage.removeItem('pendingImagePreview');
         sessionStorage.removeItem('pendingImageData');
         
-        // Redirect to homepage after login
+        // Redirect immediately - don't wait for state updates
         window.location.href = '/';
       } else {
-        toast.error(t.loginError || 'Login failed');
+        toast.error('Login failed');
+        setIsLoggingIn(false);
       }
     } catch {
-      toast.error(t.loginError);
-    } finally {
+      toast.error('Login failed');
       setIsLoggingIn(false);
     }
   };
@@ -437,31 +434,26 @@ export default function Home() {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data: { success?: boolean; user?: User; sessionToken?: string; error?: string } = await res.json();
-      console.log('GitHub session verify result:', data);
       if (data.user) {
-        setUser(data.user);
-        setSessionToken(token);
+        // Save to localStorage immediately
         localStorage.setItem('sessionToken', token);
-        localStorage.setItem('userName', data.user.name);
-        localStorage.setItem('userEmail', data.user.email);
+        localStorage.setItem('userName', data.user.name || '');
+        localStorage.setItem('userEmail', data.user.email || '');
         localStorage.setItem('userPicture', data.user.picture || '');
-        toast.success(t.loginSuccess);
         
-        // Clear any pending image state
+        // Clear pending state
         setPendingImage(null);
         sessionStorage.removeItem('pendingImagePreview');
         sessionStorage.removeItem('pendingImageData');
         
-        // Redirect to homepage after login
+        // Redirect immediately - don't wait for state updates
         window.location.href = '/';
       } else {
-        console.error('No user in response:', data);
-        toast.error(t.loginError);
+        toast.error('Login failed');
+        setIsLoggingIn(false);
       }
-    } catch (err) {
-      console.error('Verify session error:', err);
-      toast.error(t.loginError);
-    } finally {
+    } catch {
+      toast.error('Login failed');
       setIsLoggingIn(false);
     }
   };
