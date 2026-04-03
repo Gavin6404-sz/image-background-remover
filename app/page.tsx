@@ -354,10 +354,11 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists
+        // Auto-process pending image if exists - save to local var first
         if (pendingImage) {
-          processImage(pendingImage.file);
-          setPendingImage(null);
+          const fileToProcess = pendingImage.file;
+          setPendingImage(null); // Clear immediately to prevent duplicates
+          processImage(fileToProcess);
         }
       } else {
         toast.error(t.loginError || 'Login failed');
@@ -432,10 +433,11 @@ export default function Home() {
         localStorage.setItem('userPicture', data.user.picture || '');
         toast.success(t.loginSuccess);
         
-        // Auto-process pending image if exists
+        // Auto-process pending image if exists - save to local var first
         if (pendingImage) {
-          processImage(pendingImage.file);
-          setPendingImage(null);
+          const fileToProcess = pendingImage.file;
+          setPendingImage(null); // Clear immediately to prevent duplicates
+          processImage(fileToProcess);
         }
       } else {
         console.error('No user in response:', data);
