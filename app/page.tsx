@@ -521,10 +521,22 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="px-3 py-1.5 bg-gradient-to-r from-orange-100 to-amber-100 text-orange-700 border-orange-200 font-medium text-sm">
-                  {user.name}
-                </Badge>
-                <Button 
+                <a
+                  href="/profile"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-100 to-amber-100 border border-orange-200 hover:from-orange-200 hover:to-amber-200 transition-all group"
+                >
+                  {user.picture ? (
+                    <img src={user.picture} alt={user.name} className="w-6 h-6 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white text-xs font-bold">
+                      {user.name?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-sm font-semibold text-orange-700 group-hover:text-orange-800">
+                    {user.name}
+                  </span>
+                </a>
+                <Button
                   onClick={handleLogout}
                   variant="outline"
                   size="sm"
