@@ -232,35 +232,28 @@ export default function Home() {
 
   // Initialize Google Identity Services
   useEffect(() => {
-    // Function to initialize Google
+    // Function to initialize Google - use setTimeout to ensure script is loaded
+    let initialized = false;
+    
     function initializeGoogle() {
+      if (initialized) return true;
       if (window.google && window.google.accounts && window.google.accounts.id) {
         window.google.accounts.id.initialize({
           client_id: GOOGLE_CLIENT_ID,
           callback: handleCredentialResponse,
         });
+        initialized = true;
         return true;
       }
       return false;
     }
 
-    // Try to initialize immediately if Google is already loaded
-    if (!initializeGoogle()) {
-      // If not loaded yet, wait for the script to load
-      const checkGoogle = setInterval(() => {
-        if (initializeGoogle()) {
-          clearInterval(checkGoogle);
-        }
-      }, 100);
-      
-      // Also listen for the script load event
-      const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-      if (script) {
-        script.addEventListener('load', () => {
-          setTimeout(initializeGoogle, 100);
-        });
+    // Wait for Google script to load, then initialize
+    const timer = setInterval(() => {
+      if (initializeGoogle()) {
+        clearInterval(timer);
       }
-    }
+    }, 50);
     
     // Check for existing session
     const savedToken = localStorage.getItem('sessionToken');
@@ -325,20 +318,32 @@ export default function Home() {
         setUser(null);
       }
       
-      const timer = setTimeout(() => {
-        if (window.google && window.google.accounts && window.google.accounts.id) {
-          if (googleButtonRef.current) {
-            googleButtonRef.current.innerHTML = '';
-            window.google.accounts.id.renderButton(googleButtonRef.current, {
-              theme: 'filled_black',
-              size: 'large',
-              text: 'signin_with',
-              width: 300,
-            });
-          }
+      // Render Google button immediately if ready, or poll briefly
+      function renderButton() {
+        if (window.google && window.google.accounts && window.google.accounts.id && googleButtonRef.current) {
+          googleButtonRef.current.innerHTML = '';
+          window.google.accounts.id.renderButton(googleButtonRef.current, {
+            theme: 'filled_black',
+            size: 'large',
+            text: 'signin_with',
+            width: 300,
+          });
+          return true;
         }
-      }, 300);
-      return () => clearTimeout(timer);
+        return false;
+      }
+      
+      // Try immediately first
+      if (!renderButton()) {
+        // If not ready, try a few times with short delays
+        let attempts = 0;
+        const interval = setInterval(() => {
+          if (renderButton() || attempts++ > 10) {
+            clearInterval(interval);
+          }
+        }, 50);
+        return () => clearInterval(interval);
+      }
     }
   }, [showLoginDialog]);
 
