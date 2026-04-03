@@ -40,17 +40,30 @@ interface HistoryItem {
 
 type HistoryFilter = 'all' | 'free' | 'subscription' | 'points' | 'success' | 'failed';
 
-function formatDate(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
+function formatDate(timestamp: number | string): string {
+  let date: Date;
+  if (typeof timestamp === 'string') {
+    // Handle string format "2026-03-27 12:31:10"
+    date = new Date(timestamp.replace(' ', 'T') + 'Z');
+  } else {
+    // Handle Unix timestamp (seconds)
+    date = new Date(timestamp * 1000);
+  }
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-function formatRelativeTime(timestamp: number): string {
+function formatRelativeTime(timestamp: number | string): string {
+  let timeMs: number;
+  if (typeof timestamp === 'string') {
+    timeMs = new Date(timestamp.replace(' ', 'T') + 'Z').getTime();
+  } else {
+    timeMs = timestamp * 1000;
+  }
   const now = Date.now();
-  const diff = now - timestamp * 1000;
+  const diff = now - timeMs;
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
