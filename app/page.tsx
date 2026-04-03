@@ -461,7 +461,98 @@ export default function Home() {
     }
   };
 
-  const handleLogout = async () => {
+  const handleEmailLogin = async () => {
+    const emailOrUsername = (document.getElementById('email-username-input') as HTMLInputElement)?.value.trim();
+    const password = (document.getElementById('password-input') as HTMLInputElement)?.value;
+
+    if (!emailOrUsername || !password) {
+      toast.error(lang === 'en' ? 'Please enter email/username and password' : '请输入邮箱/用户名和密码');
+      return;
+    }
+
+    setIsLoggingIn(true);
+
+    // First try login
+    try {
+      const isEmail = emailOrUsername.includes('@');
+      const loginPayload = isEmail
+        ? { email: emailOrUsername, password }
+        : { username: emailOrUsername, password };
+
+      const res = await fetch(`${API_BASE_URL}/api/auth/login/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginPayload),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.sessionToken) {
+        // Login success
+        localStorage.setItem('sessionToken', data.sessionToken);
+        localStorage.setItem('userName', data.user?.name || emailOrUsername);
+        localStorage.setItem('userEmail', data.user?.email || '');
+        localStorage.setItem('userPicture', data.user?.picture || '');
+
+        setShowLoginDialog(false);
+        setPendingImage(null);
+        sessionStorage.removeItem('pendingImagePreview');
+        sessionStorage.removeItem('pendingImageData');
+
+        toast.success(t.loginSuccess);
+        window.location.replace('/');
+        return;
+      }
+
+      // If user not found, try register
+      if (res.status === 401 && data.error === 'User not found') {
+        // Check if it looks like an email for registration
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(emailOrUsername)) {
+          // Try to register
+          const registerRes = await fetch(`${API_BASE_URL}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: emailOrUsername,
+              username: emailOrUsername.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 20),
+              password,
+            }),
+          });
+          const registerData = await registerRes.json();
+
+          if (registerData.success && registerData.sessionToken) {
+            localStorage.setItem('sessionToken', registerData.sessionToken);
+            localStorage.setItem('userName', registerData.user?.name || emailOrUsername);
+            localStorage.setItem('userEmail', registerData.user?.email || '');
+            localStorage.setItem('userPicture', '');
+
+            setShowLoginDialog(false);
+            setPendingImage(null);
+            sessionStorage.removeItem('pendingImagePreview');
+            sessionStorage.removeItem('pendingImageData');
+
+            toast.success(t.loginSuccess);
+            toast.success(lang === 'en' ? '🎁 3 free credits awarded!' : '🎁 已获得 3 次免费额度！');
+            window.location.replace('/');
+            return;
+          } else {
+            toast.error(registerData.error || (lang === 'en' ? 'Registration failed' : '注册失败'));
+          }
+        } else {
+          toast.error(lang === 'en' ? 'Username not found. Please register first.' : '用户名不存在，请先注册');
+        }
+        setIsLoggingIn(false);
+        return;
+      }
+
+      toast.error(data.error || t.loginError);
+      setIsLoggingIn(false);
+    } catch {
+      toast.error(t.loginError);
+      setIsLoggingIn(false);
+    }
+  };
     // Save token before clearing
     const currentToken = sessionToken;
     
@@ -722,13 +813,38 @@ export default function Home() {
                     </div>
                     
                     <Separator className="bg-orange-300" />
-                    
-                    <p className="text-center text-sm text-orange-100">
-                      {lang === 'en' ? "Don't have an account?" : '没有账号?'}{' '}
-                      <Button variant="link" className="text-white hover:text-orange-100 p-0 h-auto font-semibold underline underline-offset-2">
-                        {lang === 'en' ? 'Sign Up' : '注册'}
+
+                    {/* Email/Username + Password Form */}
+                    <div className="flex flex-col gap-3 py-2">
+                      <div>
+                        <input
+                          id="email-username-input"
+                          type="text"
+                          placeholder={lang === 'en' ? 'Email or Username' : '邮箱 / 用户名'}
+                          className="w-full h-12 px-4 rounded-lg bg-white/90 border border-orange-200 text-gray-900 placeholder:text-gray-400 text-base focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all"
+                          autoComplete="username"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          id="password-input"
+                          type="password"
+                          placeholder={lang === 'en' ? 'Password' : '密码'}
+                          className="w-full h-12 px-4 rounded-lg bg-white/90 border border-orange-200 text-gray-900 placeholder:text-gray-400 text-base focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all"
+                          autoComplete="current-password"
+                        />
+                      </div>
+                      <Button
+                        id="email-login-btn"
+                        className="w-full h-12 bg-white hover:bg-gray-50 border border-orange-200 text-orange-600 font-bold text-base rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
+                        onClick={handleEmailLogin}
+                      >
+                        <span>{lang === 'en' ? 'Sign In / Register' : '登录 / 注册'}</span>
                       </Button>
-                    </p>
+                      <p className="text-center text-sm text-orange-100">
+                        🎁 {lang === 'en' ? '3 free credits on first sign in' : '首次登录即送 3 次免费额度'}
+                      </p>
+                    </div>
                   </DialogContent>
                 </Dialog>
               </>

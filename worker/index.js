@@ -1,7 +1,10 @@
 /**
- * Cloudflare Worker - OAuth Handler (Google + GitHub)
+ * Cloudflare Worker - OAuth Handler (Google + GitHub + Email)
  * Handles OAuth verification and user storage in D1
  */
+
+// Load bcryptjs from CDN for password hashing in Cloudflare Workers
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js');
 
 export default {
   async fetch(request, env, ctx) {
@@ -106,6 +109,188 @@ export default {
             .run();
         }
         return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // ========== Email/Username Auth Endpoints ==========
+
+      // POST /api/auth/register - Email/username registration
+      if (path.endsWith('/api/auth/register') && request.method === 'POST') {
+        const { email, username, password } = await request.json();
+
+        // Validation
+        if (!email || !username || !password) {
+          return new Response(JSON.stringify({ error: 'Missing email, username, or password' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Username validation: 3-20 chars, alphanumeric + underscore
+        const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+        if (!usernameRegex.test(username)) {
+          return new Response(JSON.stringify({ error: 'Username must be 3-20 characters, alphanumeric and underscores only' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Password validation: min 8 chars
+        if (password.length < 8) {
+          return new Response(JSON.stringify({ error: 'Password must be at least 8 characters' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Check if email already exists
+        const existingByEmail = await env.DB
+          .prepare('SELECT id FROM users WHERE email = ?')
+          .bind(email)
+          .first();
+
+        if (existingByEmail) {
+          return new Response(JSON.stringify({ error: 'Email already registered' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Check if username already exists
+        const existingByUsername = await env.DB
+          .prepare('SELECT id FROM users WHERE username = ?')
+          .bind(username)
+          .first();
+
+        if (existingByUsername) {
+          return new Response(JSON.stringify({ error: 'Username already taken' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Hash password with bcrypt
+        const saltRounds = parseInt(env.BCRYPT_SALT_ROUNDS) || 10;
+        const passwordHash = await new Promise((resolve, reject) => {
+          // @ts-ignore
+          dcodeIO.bcrypt.hash(password, saltRounds, (err, hash) => {
+            if (err) reject(err);
+            else resolve(hash);
+          });
+        });
+
+        // Generate user ID and session token
+        const userId = `email_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const sessionToken = generateSessionToken();
+
+        // Create user with 3 free quota
+        await env.DB
+          .prepare('INSERT INTO users (id, email, username, password_hash, auth_type, session_token, name) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(userId, email, username, passwordHash, 'email', sessionToken, username)
+          .run();
+
+        // Record 3 free quota transaction
+        await env.DB
+          .prepare('INSERT INTO quota_transactions (user_id, amount, balance, quota_type, reason) VALUES (?, ?, ?, ?, ?)')
+          .bind(userId, 3, 3, 'free', '注册赠送')
+          .run();
+
+        return new Response(JSON.stringify({
+          success: true,
+          user: {
+            id: userId,
+            email,
+            username,
+            name: username,
+          },
+          sessionToken,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // POST /api/auth/login/email - Email or username login
+      if (path.endsWith('/api/auth/login/email') && request.method === 'POST') {
+        const { email, username, password } = await request.json();
+
+        if (!password || (!email && !username)) {
+          return new Response(JSON.stringify({ error: 'Missing credentials' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Find user by email OR username
+        let user;
+        if (email) {
+          user = await env.DB
+            .prepare('SELECT * FROM users WHERE email = ?')
+            .bind(email)
+            .first();
+        } else if (username) {
+          user = await env.DB
+            .prepare('SELECT * FROM users WHERE username = ?')
+            .bind(username)
+            .first();
+        }
+
+        if (!user) {
+          return new Response(JSON.stringify({ error: 'User not found' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!user.password_hash) {
+          return new Response(JSON.stringify({ error: 'This account uses OAuth login. Please use Google or GitHub to sign in.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Verify password
+        const passwordMatch = await new Promise((resolve) => {
+          // @ts-ignore
+          dcodeIO.bcrypt.compare(password, user.password_hash, (err, result) => {
+            resolve(!err && result);
+          });
+        });
+
+        if (!passwordMatch) {
+          return new Response(JSON.stringify({ error: 'Invalid password' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Generate new session token
+        const sessionToken = generateSessionToken();
+        await env.DB
+          .prepare('UPDATE users SET session_token = ? WHERE id = ?')
+          .bind(sessionToken, user.id)
+          .run();
+
+        return new Response(JSON.stringify({
+          success: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            name: user.name,
+            picture: user.picture,
+          },
+          sessionToken,
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
