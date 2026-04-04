@@ -350,7 +350,7 @@ export default function ProfilePage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30">
               <User className="h-5 w-5" />
             </div>
-            <span className="text-lg font-bold text-foreground">lang === 'en' ? 'Profile' : '个人中心'</span>
+            <span className="text-lg font-bold text-foreground">{lang === 'en' ? 'Profile' : '个人中心'}</span>
           </div>
         </div>
       </header>
@@ -363,7 +363,7 @@ export default function ProfilePage() {
             className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-sky-500 text-white font-semibold shadow-lg hover:from-blue-600 hover:to-sky-600 transition-all"
           >
             <ArrowLeft className="h-4 w-4" />
-            lang === 'en' ? 'Back to Home' : '返回首页'
+            {lang === 'en' ? 'Back to Home' : '返回首页'}
           </a>
           <Button
             onClick={handleLogout}
@@ -371,7 +371,7 @@ export default function ProfilePage() {
             className="flex-1 h-auto py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-0 shadow-lg font-semibold gap-2 transition-all"
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            lang === 'en' ? 'Sign Out' : '退出登录'
+            {lang === 'en' ? 'Sign Out' : '退出登录'}
           </Button>
         </div>
       </div>
@@ -429,7 +429,7 @@ export default function ProfilePage() {
                 href="/"
                 className="inline-flex items-center justify-center mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold shadow-lg hover:from-orange-600 hover:to-amber-600 transition-all"
               >
-                lang === 'en' ? 'Back to Home' : '返回首页'
+                {lang === 'en' ? 'Back to Home' : '返回首页'}
               </a>
             </CardContent>
           </Card>
@@ -452,7 +452,7 @@ export default function ProfilePage() {
               <div className="grid grid-cols-3 gap-4">
                 {/* Free Quota */}
                 <div className="rounded-xl border-2 border-orange-100 bg-gradient-to-br from-orange-50 to-amber-50 p-4 text-center space-y-1">
-                  <p className="text-xs text-orange-600 font-medium uppercase tracking-wide">lang === 'en' ? 'Free Credits' : '免费额度'</p>
+                  <p className="text-xs text-orange-600 font-medium uppercase tracking-wide">{lang === 'en' ? 'Free Credits' : '免费额度'}</p>
                   <p className="text-2xl font-black text-orange-600">
                     {quota ? `${quota.free.remaining}/${quota.free.total}` : '—'}
                   </p>
@@ -472,7 +472,7 @@ export default function ProfilePage() {
 
                 {/* Points */}
                 <div className="rounded-xl border-2 border-purple-100 bg-gradient-to-br from-purple-50 to-pink-50 p-4 text-center space-y-1">
-                  <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">lang === 'en' ? 'Credits' : '积分'</p>
+                  <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">{lang === 'en' ? 'Credits' : '积分'}</p>
                   <p className="text-2xl font-black text-purple-600">
                     {quota?.points?.balance ?? '—'}
                   </p>
@@ -488,13 +488,13 @@ export default function ProfilePage() {
                 href="/pricing"
                 className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all"
               >
-                💎 lang === 'en' ? 'Buy Credits' : '充值积分'
+                💎 {lang === 'en' ? 'Buy Credits' : '充值积分'}
               </a>
               <a
                 href="/pricing"
                 className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-sky-500 text-white font-semibold shadow-lg hover:from-blue-600 hover:to-sky-600 transition-all"
               >
-                📦 lang === 'en' ? 'Subscribe' : '订阅会员'
+                📦 {lang === 'en' ? 'Subscribe' : '订阅会员'}
               </a>
             </div>
           </CardContent>
@@ -504,7 +504,7 @@ export default function ProfilePage() {
         <Card className="shadow-lg overflow-hidden">
           <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-500" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-bold">lang === 'en' ? 'Account Settings' : '账户设置'</CardTitle>
+            <CardTitle className="text-lg font-bold">{lang === 'en' ? 'Account Settings' : '账户设置'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Display Name */}
@@ -577,7 +577,7 @@ export default function ProfilePage() {
                   <SelectItem value="all">{lang === 'en' ? 'All' : '全部'}</SelectItem>
                   <SelectItem value="free">{lang === 'en' ? 'Free' : '免费'}</SelectItem>
                   <SelectItem value="subscription">{lang === 'en' ? 'Sub' : '订阅'}</SelectItem>
-                  <SelectItem value="points">lang === 'en' ? 'Credits' : '积分'</SelectItem>
+                  <SelectItem value="points">{lang === 'en' ? 'Credits' : '积分'}</SelectItem>
                   <SelectItem value="success">{lang === 'en' ? 'Success' : '成功'}</SelectItem>
                   <SelectItem value="failed">{lang === 'en' ? 'Failed' : '失败'}</SelectItem>
                 </SelectContent>
