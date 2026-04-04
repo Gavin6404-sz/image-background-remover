@@ -105,7 +105,10 @@ function getQuotaTypeLabelEn(type: string): string {
 
 export default function ProfilePage() {
   const [mounted, setMounted] = useState(false);
-  const [lang, setLang] = useState<'en' | 'zh'>('en');
+  const [lang, setLang] = useState<'en' | 'zh'>(() => {
+    // Default to 'en' - only use localStorage if user explicitly saved a preference
+    return 'en';
+  });
   const [user, setUser] = useState<UserInfo | null>(null);
   const [quota, setQuota] = useState<QuotaData | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
