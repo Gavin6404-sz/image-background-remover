@@ -3,8 +3,73 @@
  * Handles OAuth verification and user storage in D1
  */
 
-// Load bcryptjs from CDN for password hashing in Cloudflare Workers
-importScripts('https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js');
+// ========== Password Hashing (Web Crypto API - PBKDF2) ==========
+// Hash format: base64(salt):hex(hash)
+const PBKDF2_ITERATIONS = 30000;
+
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const hash = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  const saltB64 = btoa(String.fromCharCode(...salt));
+  const hashHex = Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return saltB64 + ':' + hashHex;
+}
+
+async function verifyPassword(password, stored) {
+  try {
+    const [saltB64, hashHex] = stored.split(':');
+    if (!saltB64 || !hashHex) return false;
+    const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const hash = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: PBKDF2_ITERATIONS,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      256
+    );
+    const computedHash = Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    if (computedHash.length !== hashHex.length) return false;
+    let result = 0;
+    for (let i = 0; i < computedHash.length; i++) {
+      result |= computedHash.charCodeAt(i) ^ hashHex.charCodeAt(i);
+    }
+    return result === 0;
+  } catch {
+    return false;
+  }
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -48,13 +113,13 @@ export default {
         let sessionToken = generateSessionToken();
         if (existingUser) {
           await env.DB
-            .prepare('UPDATE users SET name = ?, email = ?, picture = ?, google_token = ?, session_token = ? WHERE id = ?')
-            .bind(googleUser.name, googleUser.email, googleUser.picture, credential, sessionToken, googleUser.sub)
+            .prepare('UPDATE users SET name = ?, email = ?, picture = ?, auth_type = ?, session_token = ? WHERE id = ?')
+            .bind(googleUser.name, googleUser.email, googleUser.picture, 'google', sessionToken, googleUser.sub)
             .run();
         } else {
           await env.DB
-            .prepare('INSERT INTO users (id, email, name, picture, google_token, session_token) VALUES (?, ?, ?, ?, ?, ?)')
-            .bind(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, credential, sessionToken)
+            .prepare('INSERT INTO users (id, email, name, picture, auth_type, session_token) VALUES (?, ?, ?, ?, ?, ?)')
+            .bind(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, 'google', sessionToken)
             .run();
         }
 
@@ -115,22 +180,13 @@ export default {
 
       // ========== Email/Username Auth Endpoints ==========
 
-      // POST /api/auth/register - Email/username registration
+      // POST /api/auth/register - Username + password registration
       if (path.endsWith('/api/auth/register') && request.method === 'POST') {
-        const { email, username, password } = await request.json();
+        const { username, password } = await request.json();
 
         // Validation
-        if (!email || !username || !password) {
-          return new Response(JSON.stringify({ error: 'Missing email, username, or password' }), {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
-        // Email format validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+        if (!username || !password) {
+          return new Response(JSON.stringify({ error: 'Missing username or password' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -139,7 +195,7 @@ export default {
         // Username validation: 3-20 chars, alphanumeric + underscore
         const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
         if (!usernameRegex.test(username)) {
-          return new Response(JSON.stringify({ error: 'Username must be 3-20 characters, alphanumeric and underscores only' }), {
+          return new Response(JSON.stringify({ error: 'Username must be 3-20 characters, letters, numbers and underscores only' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -153,50 +209,30 @@ export default {
           });
         }
 
-        // Check if email already exists
-        const existingByEmail = await env.DB
-          .prepare('SELECT id FROM users WHERE email = ?')
-          .bind(email)
-          .first();
-
-        if (existingByEmail) {
-          return new Response(JSON.stringify({ error: 'Email already registered' }), {
-            status: 409,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
         // Check if username already exists
-        const existingByUsername = await env.DB
+        const existingUser = await env.DB
           .prepare('SELECT id FROM users WHERE username = ?')
           .bind(username)
           .first();
 
-        if (existingByUsername) {
+        if (existingUser) {
           return new Response(JSON.stringify({ error: 'Username already taken' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
-        // Hash password with bcrypt
-        const saltRounds = parseInt(env.BCRYPT_SALT_ROUNDS) || 10;
-        const passwordHash = await new Promise((resolve, reject) => {
-          // @ts-ignore
-          dcodeIO.bcrypt.hash(password, saltRounds, (err, hash) => {
-            if (err) reject(err);
-            else resolve(hash);
-          });
-        });
+        // Hash password with PBKDF2
+        const passwordHash = await hashPassword(password);
 
         // Generate user ID and session token
-        const userId = `email_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const userId = `email_${username}_${Date.now()}`;
         const sessionToken = generateSessionToken();
 
-        // Create user with 3 free quota
+        // Create user
         await env.DB
-          .prepare('INSERT INTO users (id, email, username, password_hash, auth_type, session_token, name) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(userId, email, username, passwordHash, 'email', sessionToken, username)
+          .prepare('INSERT INTO users (id, username, password_hash, auth_type, session_token, name) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(userId, username, passwordHash, 'email', sessionToken, username)
           .run();
 
         // Record 3 free quota transaction
@@ -209,7 +245,6 @@ export default {
           success: true,
           user: {
             id: userId,
-            email,
             username,
             name: username,
           },
@@ -219,33 +254,25 @@ export default {
         });
       }
 
-      // POST /api/auth/login/email - Email or username login
+      // POST /api/auth/login/email - Username + password login
       if (path.endsWith('/api/auth/login/email') && request.method === 'POST') {
-        const { email, username, password } = await request.json();
+        const { username, password } = await request.json();
 
-        if (!password || (!email && !username)) {
+        if (!password || !username) {
           return new Response(JSON.stringify({ error: 'Missing credentials' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
-        // Find user by email OR username
-        let user;
-        if (email) {
-          user = await env.DB
-            .prepare('SELECT * FROM users WHERE email = ?')
-            .bind(email)
-            .first();
-        } else if (username) {
-          user = await env.DB
-            .prepare('SELECT * FROM users WHERE username = ?')
-            .bind(username)
-            .first();
-        }
+        // Find user by username
+        const user = await env.DB
+          .prepare('SELECT * FROM users WHERE username = ?')
+          .bind(username)
+          .first();
 
         if (!user) {
-          return new Response(JSON.stringify({ error: 'User not found' }), {
+          return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -259,15 +286,10 @@ export default {
         }
 
         // Verify password
-        const passwordMatch = await new Promise((resolve) => {
-          // @ts-ignore
-          dcodeIO.bcrypt.compare(password, user.password_hash, (err, result) => {
-            resolve(!err && result);
-          });
-        });
+        const passwordMatch = await verifyPassword(password, user.password_hash);
 
         if (!passwordMatch) {
-          return new Response(JSON.stringify({ error: 'Invalid password' }), {
+          return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -284,7 +306,6 @@ export default {
           success: true,
           user: {
             id: user.id,
-            email: user.email,
             username: user.username,
             name: user.name,
             picture: user.picture,
@@ -931,9 +952,14 @@ function base64UrlDecode(str) {
   const binary = atob(str);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+    const ch = binary.charCodeAt(i);
+    // Reject ASCII control characters (except tab, LF, CR) which are invalid in JSON strings
+    if (ch < 0x20 && ch !== 0x09 && ch !== 0x0A && ch !== 0x0D) {
+      throw new Error(`Control character 0x${ch.toString(16)} at byte ${i}`);
+    }
+    bytes[i] = ch;
   }
-  return new TextDecoder('utf-8').decode(bytes);
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }
 
 async function verifyGoogleCredential(credential, expectedClientId) {
@@ -941,7 +967,12 @@ async function verifyGoogleCredential(credential, expectedClientId) {
     const parts = credential.split('.');
     if (parts.length !== 3) return null;
 
-    const payload = JSON.parse(base64UrlDecode(parts[1]));
+    let payload;
+    try {
+      payload = JSON.parse(base64UrlDecode(parts[1]));
+    } catch {
+      return null;
+    }
     if (payload.aud !== expectedClientId) return null;
     if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') return null;
 
