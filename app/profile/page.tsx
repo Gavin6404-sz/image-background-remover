@@ -653,7 +653,7 @@ export default function ProfilePage() {
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
                     <p className="text-xs text-muted-foreground">
-                      {lang === 'en' ?  : \}
+                      {lang === 'en' ? `Total ${historyTotal} items` : `共 ${historyTotal} 条`}
                     </p>
                     <div className="flex items-center gap-1">
                       <Button
