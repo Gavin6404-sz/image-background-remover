@@ -23,36 +23,5 @@ jobs:
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          echo "Triggering Cloudflare Pages deployment..."
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/image-background-remover/deployments")
-          echo "Response: $RESPONSE"
-          DEPLOYMENT_ID=$(echo "$RESPONSE" | jq -r '.result.id')
-          echo "Deployment ID: $DEPLOYMENT_ID"
-          
-          if [ "$DEPLOYMENT_ID" = "null" ] || [ -z "$DEPLOYMENT_ID" ]; then
-            echo "Failed to trigger deployment"
-            exit 1
-          fi
-          
-          echo "Waiting for deployment..."
-          for i in {1..20}; do
-            STATUS=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/image-background-remover/deployments/$DEPLOYMENT_ID" \
-              | jq -r '.result.latest_stage.status')
-            echo "Status: $STATUS"
-            if [ "$STATUS" = "success" ]; then
-              echo "Deployment successful!"
-              exit 0
-            elif [ "$STATUS" = "failure" ]; then
-              echo "Deployment failed!"
-              exit 1
-            fi
-            sleep 30
-          done
-          echo "Timeout waiting for deployment"
-          exit 1
+          npx wrangler pages deploy out/ --project-name=image-background-remover --branch=production
