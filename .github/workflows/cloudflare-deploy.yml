@@ -16,7 +16,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install --no-audit --no-fund --prefer-offline || npm install --no-audit --no-fund
+          npm install --loglevel=error --no-audit --no-fund || true
+          ls node_modules/.bin/next 2>/dev/null && echo "next found" || echo "next NOT found"
 
       - name: Build
         run: npm run build
