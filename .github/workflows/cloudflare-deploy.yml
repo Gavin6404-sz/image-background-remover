@@ -13,15 +13,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: |
-          rm -f package-lock.json
-          npm install --registry=https://registry.npmjs.org
+          npm install -g yarn
+          yarn install
 
       - name: Build
-        run: npm run build
+        run: yarn build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
 
