@@ -222,13 +222,7 @@ declare global {
 
 export default function Home() {
   const router = useRouter();
-  const [lang, setLang] = useState<Language>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userLang');
-      if (saved === 'en' || saved === 'zh') return saved;
-    }
-    return 'en';
-  });
+  const [lang, setLang] = useState<Language>('en');
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -239,18 +233,12 @@ export default function Home() {
   const githubLinkRef = useRef<HTMLAnchorElement>(null);
   const t = translations[lang];
 
-  // Read lang from URL on mount, save to localStorage
+  // Read lang from URL on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlLang = params.get('lang');
     if (urlLang === 'en' || urlLang === 'zh') {
       setLang(urlLang);
-      localStorage.setItem('userLang', urlLang);
-    } else {
-      const saved = localStorage.getItem('userLang');
-      if (saved === 'en' || saved === 'zh') {
-        setLang(saved);
-      }
     }
   }, []);
 
@@ -759,7 +747,7 @@ export default function Home() {
             {user ? (
               <div className="flex items-center gap-3">
                 <a
-                  href="/profile"
+                  href={`/profile?lang=${lang}`}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-100 to-amber-100 border border-orange-400 hover:from-orange-200 hover:to-amber-200 transition-all group"
                 >
                   {user.picture ? (
@@ -986,7 +974,6 @@ export default function Home() {
             <Select value={lang} onValueChange={(v) => {
               if (v) {
                 setLang(v as Language);
-                localStorage.setItem('userLang', v);
                 const url = new URL(window.location.href);
                 url.searchParams.set('lang', v);
                 window.history.pushState({}, '', url.toString());
