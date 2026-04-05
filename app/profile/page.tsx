@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, User, Loader2, Check, X, ChevronLeft, ChevronRight, Filter, Save, LogOut } from 'lucide-react';
+import { ArrowLeft, User, Loader2, Check, X, ChevronLeft, ChevronRight, Filter, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +52,22 @@ function formatDate(timestamp: number | string, lang: 'en' | 'zh' = 'zh'): strin
   return `${dateObj.getFullYear()}年${m}月${dateObj.getDate()}日`;
 }
 
+function formatDateTime(timestamp: number | string, lang: 'en' | 'zh' = 'zh'): string {
+  const dateObj: Date = typeof timestamp === 'string'
+    ? new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z')
+    : new Date(timestamp * 1000);
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  const hh = String(dateObj.getHours()).padStart(2, '0');
+  const mm = String(dateObj.getMinutes()).padStart(2, '0');
+  const ss = String(dateObj.getSeconds()).padStart(2, '0');
+  if (lang === 'en') {
+    return `${y}/${m}/${d} ${hh}:${mm}:${ss}`;
+  }
+  return `${y}年${m}月${d}日 ${hh}:${mm}:${ss}`;
+}
+
 function formatRelativeTime(timestamp: number | string, lang: 'en' | 'zh' = 'zh'): string {
   const timeMs: number = typeof timestamp === 'string'
     ? new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z').getTime()
@@ -100,6 +116,7 @@ export default function ProfilePage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
@@ -128,9 +145,11 @@ export default function ProfilePage() {
     setSessionToken(token);
     setDisplayName(savedName || '');
     setMounted(true);
-    const savedLang = localStorage.getItem('lang');
-    if (savedLang === 'zh' || savedLang === 'en') {
-      setLang(savedLang);
+    // Read lang from URL params
+    const params = new URLSearchParams(window.location.search);
+    const urlLang = params.get('lang');
+    if (urlLang === 'zh' || urlLang === 'en') {
+      setLang(urlLang);
     } else {
       const browserLang = navigator.language.toLowerCase();
       setLang(browserLang.startsWith('zh') ? 'zh' : 'en');
@@ -140,6 +159,13 @@ export default function ProfilePage() {
     fetchUserInfo(token);
     fetchQuotas(token);
   }, []);
+
+  // Redirect to home on load error
+  useEffect(() => {
+    if (loadError) {
+      window.location.href = '/';
+    }
+  }, [loadError]);
 
   const fetchUserInfo = async (token: string) => {
     try {
@@ -160,6 +186,7 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error('Fetch user info error:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -329,36 +356,25 @@ export default function ProfilePage() {
 
       {/* Header */}
       <header className="sticky top-0 z-[100] border-b bg-background/95 backdrop-blur-md">
-        <div className="flex items-center justify-center py-3">
+        <div className="flex items-center justify-between px-4 py-3 max-w-3xl mx-auto">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30">
-              <User className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+              <User className="h-4 w-4" />
             </div>
-            <span className="text-lg font-bold text-foreground">{lang === 'en' ? 'Profile' : '个人中心'}</span>
+            <span className="text-base font-semibold text-foreground">{lang === 'en' ? 'Profile' : '个人中心'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => { window.location.href = `/?lang=${lang}`; }} className="gap-1.5 text-muted-foreground border-muted-200 hover:text-foreground">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {lang === 'en' ? 'Home' : '首页'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout} disabled={loggingOut} className="gap-1.5 text-muted-foreground border-muted-200 hover:text-foreground hover:border-destructive hover:text-destructive">
+              {loggingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+              {lang === 'en' ? 'Sign Out' : '退出'}
+            </Button>
           </div>
         </div>
       </header>
-
-      {/* Action Buttons - Prominent Card */}
-      <div className="container mx-auto px-4 pt-4 pb-2 max-w-3xl">
-        <div className="flex gap-3">
-          <a
-            href="/"
-            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-sky-500 text-white font-semibold shadow-lg hover:from-blue-600 hover:to-sky-600 transition-all"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {lang === 'en' ? 'Back to Home' : '返回首页'}
-          </a>
-          <Button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="flex-1 h-auto py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-0 shadow-lg font-semibold gap-2 transition-all"
-          >
-            {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            {lang === 'en' ? 'Sign Out' : '退出登录'}
-          </Button>
-        </div>
-      </div>
 
       <main className="container mx-auto px-4 py-6 space-y-6 max-w-3xl">
         {/* User Info Card */}
@@ -484,65 +500,6 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Account Settings */}
-        <Card className="shadow-lg overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-500" />
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-bold">{lang === 'en' ? 'Account Settings' : '账户设置'}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Display Name */}
-            <div className="space-y-2">
-              <Label htmlFor="displayName" className="text-sm font-medium">
-                {lang === 'en' ? 'Display Name' : '显示名称'}
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="displayName"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder={lang === 'en' ? 'Enter display name' : '输入显示名称'}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSaveDisplayName}
-                  disabled={savingName || !displayName.trim() || displayName === user?.name}
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 border-0 shadow-md font-semibold gap-2"
-                >
-                  {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {lang === 'en' ? 'Save' : '保存'}
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Bio */}
-            <div className="space-y-2">
-              <Label htmlFor="bio" className="text-sm font-medium">
-                {lang === 'en' ? 'Bio' : '个人简介'}
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="bio"
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  placeholder={lang === 'en' ? 'Tell us about yourself (optional)' : '介绍一下自己（可选）'}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSaveBio}
-                  disabled={savingBio}
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 border-0 shadow-md font-semibold gap-2"
-                >
-                  {savingBio ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {lang === 'en' ? 'Save' : '保存'}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Processing History */}
         <Card className="shadow-lg overflow-hidden">
           <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-500" />
@@ -596,7 +553,7 @@ export default function ProfilePage() {
                         <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                           <td className="py-2 px-2">
                             <span className="text-xs text-muted-foreground">
-                              {formatDate(item.created_at, lang)}
+                              {formatDateTime(item.created_at, lang)}
                             </span>
                           </td>
                           <td className="py-2 px-2">

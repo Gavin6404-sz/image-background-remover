@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Upload, Download, ZoomIn, ZoomOut, RotateCcw, Wand2, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -220,6 +221,7 @@ declare global {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [lang, setLang] = useState<Language>('en');
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -230,6 +232,15 @@ export default function Home() {
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const githubLinkRef = useRef<HTMLAnchorElement>(null);
   const t = translations[lang];
+
+  // Read lang from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlLang = params.get('lang');
+    if (urlLang === 'en' || urlLang === 'zh') {
+      setLang(urlLang);
+    }
+  }, []);
 
   // Initialize Google Identity Services
   useEffect(() => {
@@ -960,7 +971,14 @@ export default function Home() {
               </>
             )}
 
-            <Select value={lang} onValueChange={(v) => { if (v) setLang(v as Language); }}>
+            <Select value={lang} onValueChange={(v) => {
+              if (v) {
+                setLang(v as Language);
+                const url = new URL(window.location.href);
+                url.searchParams.set('lang', v);
+                window.history.pushState({}, '', url.toString());
+              }
+            }}>
               <SelectTrigger className="h-11 pl-4 pr-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 border-0 shadow-lg shadow-orange-500/40 hover:shadow-xl hover:shadow-orange-500/50 transition-all duration-200 gap-3">
                 <span className="text-lg">🌐</span>
                 <span className="text-white font-bold text-sm">{lang === 'en' ? 'EN' : '中文'}</span>
