@@ -960,7 +960,7 @@ export default function Home() {
               </>
             )}
 
-            <Select value={lang} onValueChange={(v) => setLang(v as Language)}>
+            <Select value={lang} onValueChange={(v) => { if (v) setLang(v as Language); }}>
               <SelectTrigger className="h-11 pl-4 pr-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 border-0 shadow-lg shadow-orange-500/40 hover:shadow-xl hover:shadow-orange-500/50 transition-all duration-200 gap-3">
                 <span className="text-lg">🌐</span>
                 <span className="text-white font-bold text-sm">{lang === 'en' ? 'EN' : '中文'}</span>

@@ -40,50 +40,34 @@ interface HistoryItem {
 
 type HistoryFilter = 'all' | 'free' | 'subscription' | 'points' | 'success' | 'failed';
 
-function formatDate(timestamp: number | string): string {
-  let date: Date;
-  if (typeof timestamp === 'string') {
-    // Handle ISO string "2026-04-03T12:30:00.000Z" or "2026-03-27 12:31:10"
-    let str = timestamp;
-    if (!str.includes('T')) {
-      str = str.replace(' ', 'T') + 'Z';
-    }
-    date = new Date(str);
-  } else {
-    // Handle Unix timestamp (seconds)
-    date = new Date(timestamp * 1000);
+function formatDate(timestamp: number | string, lang: 'en' | 'zh' = 'zh'): string {
+  const dateObj: Date = typeof timestamp === 'string'
+    ? new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z')
+    : new Date(timestamp * 1000);
+  if (lang === 'en') {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[dateObj.getMonth()]} ${dateObj.getDate()}, ${dateObj.getFullYear()}`;
   }
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const m = dateObj.getMonth() + 1;
+  return `${dateObj.getFullYear()}年${m}月${dateObj.getDate()}日`;
 }
 
-function formatRelativeTime(timestamp: number | string): string {
-  let timeMs: number;
-  if (typeof timestamp === 'string') {
-    // Handle ISO string format "2026-04-03T12:30:00.000Z" or "2026-03-27 12:31:10"
-    let str = timestamp;
-    if (!str.includes('T')) {
-      // Handle "2026-03-27 12:31:10" format
-      str = str.replace(' ', 'T') + 'Z';
-    }
-    timeMs = new Date(str).getTime();
-  } else {
-    timeMs = timestamp * 1000;
-  }
+function formatRelativeTime(timestamp: number | string, lang: 'en' | 'zh' = 'zh'): string {
+  const timeMs: number = typeof timestamp === 'string'
+    ? new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z').getTime()
+    : timestamp * 1000;
   const now = Date.now();
   const diff = now - timeMs;
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
 
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes}分钟前`;
-  if (hours < 24) return `${hours}小时前`;
-  if (days === 1) return '昨天';
-  if (days < 7) return `${days}天前`;
-  return formatDate(timestamp);
+  if (minutes < 1) return lang === 'en' ? 'Just now' : '刚刚';
+  if (minutes < 60) return lang === 'en' ? `${minutes}m ago` : `${minutes}分钟前`;
+  if (hours < 24) return lang === 'en' ? `${hours}h ago` : `${hours}小时前`;
+  if (days === 1) return lang === 'en' ? 'Yesterday' : '昨天';
+  if (days < 7) return lang === 'en' ? `${days}d ago` : `${days}天前`;
+  return formatDate(timestamp, lang);
 }
 
 function getQuotaTypeLabel(type: string): string {
@@ -410,11 +394,11 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <div className="space-y-1">
-                  <h2 className="text-xl font-bold text-foreground">{user.name || '未设置名称'}</h2>
+                  <h2 className="text-xl font-bold text-foreground">{user.name || (lang === 'en' ? 'Unnamed' : '未设置名称')}</h2>
                   <p className="text-sm text-muted-foreground">{user.email}</p>
                   {user.created_at && (
                     <p className="text-xs text-muted-foreground">
-                      注册于 {formatDate(user.created_at)}
+                      {lang === 'en' ? 'Registered on' : '注册于'} {formatDate(user.created_at, lang)}
                     </p>
                   )}
                 </div>
@@ -424,7 +408,7 @@ export default function ProfilePage() {
         ) : (
           <Card className="shadow-lg">
             <CardContent className="p-6 text-center">
-              <p className="text-muted-foreground">无法加载用户信息</p>
+              <p className="text-muted-foreground">{lang === 'en' ? 'Failed to load user info' : '无法加载用户信息'}</p>
               <a
                 href="/"
                 className="inline-flex items-center justify-center mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold shadow-lg hover:from-orange-600 hover:to-amber-600 transition-all"
@@ -439,7 +423,7 @@ export default function ProfilePage() {
         <Card className="shadow-lg overflow-hidden">
           <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-500" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-bold">额度概览</CardTitle>
+            <CardTitle className="text-lg font-bold">{lang === 'en' ? 'Quota Overview' : '额度概览'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
@@ -456,7 +440,7 @@ export default function ProfilePage() {
                   <p className="text-2xl font-black text-orange-600">
                     {quota ? `${quota.free.remaining}/${quota.free.total}` : '—'}
                   </p>
-                  <p className="text-xs text-orange-500">剩余</p>
+                  <p className="text-xs text-orange-500">{lang === 'en' ? 'left' : '剩余'}</p>
                 </div>
 
                 {/* Subscription */}
@@ -467,7 +451,7 @@ export default function ProfilePage() {
                       ? `${quota.subscription.total - quota.subscription.used}/${quota.subscription.total}`
                       : quota?.subscription?.total === 0 ? '0/0' : '—'}
                   </p>
-                  <p className="text-xs text-blue-500">本月剩余</p>
+                  <p className="text-xs text-blue-500">{lang === 'en' ? 'this month' : '本月剩余'}</p>
                 </div>
 
                 {/* Points */}
@@ -476,7 +460,7 @@ export default function ProfilePage() {
                   <p className="text-2xl font-black text-purple-600">
                     {quota?.points?.balance ?? '—'}
                   </p>
-                  <p className="text-xs text-purple-500">可用</p>
+                  <p className="text-xs text-purple-500">{lang === 'en' ? 'available' : '可用'}</p>
                 </div>
               </div>
             )}
@@ -510,14 +494,14 @@ export default function ProfilePage() {
             {/* Display Name */}
             <div className="space-y-2">
               <Label htmlFor="displayName" className="text-sm font-medium">
-                显示名称
+                {lang === 'en' ? 'Display Name' : '显示名称'}
               </Label>
               <div className="flex gap-2">
                 <Input
                   id="displayName"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="输入显示名称"
+                  placeholder={lang === 'en' ? 'Enter display name' : '输入显示名称'}
                   className="flex-1"
                 />
                 <Button
@@ -536,14 +520,14 @@ export default function ProfilePage() {
             {/* Bio */}
             <div className="space-y-2">
               <Label htmlFor="bio" className="text-sm font-medium">
-                个人简介
+                {lang === 'en' ? 'Bio' : '个人简介'}
               </Label>
               <div className="flex gap-2">
                 <Input
                   id="bio"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="介绍一下自己（可选）"
+                  placeholder={lang === 'en' ? 'Tell us about yourself (optional)' : '介绍一下自己（可选）'}
                   className="flex-1"
                 />
                 <Button
@@ -564,7 +548,7 @@ export default function ProfilePage() {
           <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-500" />
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-bold">处理历史</CardTitle>
+              <CardTitle className="text-lg font-bold">{lang === 'en' ? 'Processing History' : '处理历史'}</CardTitle>
               <Select
                 value={historyFilter}
                 onValueChange={(v) => handleFilterChange(v as HistoryFilter)}
@@ -593,7 +577,7 @@ export default function ProfilePage() {
               </div>
             ) : history.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">暂无处理记录</p>
+                <p className="text-sm">{lang === 'en' ? 'No processing records yet' : '暂无处理记录'}</p>
               </div>
             ) : (
               <>
@@ -601,10 +585,10 @@ export default function ProfilePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">时间</th>
-                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">类型</th>
-                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">消耗</th>
-                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">状态</th>
+                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">{lang === 'en' ? 'Time' : '时间'}</th>
+                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">{lang === 'en' ? 'Type' : '类型'}</th>
+                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">{lang === 'en' ? 'Usage' : '消耗'}</th>
+                        <th className="text-left py-2 px-2 font-medium text-muted-foreground">{lang === 'en' ? 'Status' : '状态'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -612,7 +596,7 @@ export default function ProfilePage() {
                         <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                           <td className="py-2 px-2">
                             <span className="text-xs text-muted-foreground">
-                              {formatRelativeTime(item.created_at)}
+                              {formatDate(item.created_at, lang)}
                             </span>
                           </td>
                           <td className="py-2 px-2">
@@ -630,7 +614,7 @@ export default function ProfilePage() {
                             </Badge>
                           </td>
                           <td className="py-2 px-2 text-muted-foreground">
-                            -{item.credits_used}次
+                            -{item.credits_used} {lang === 'en' ? 'times' : '次'}
                           </td>
                           <td className="py-2 px-2">
                             {item.status === 'success' ? (
