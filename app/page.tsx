@@ -222,7 +222,13 @@ declare global {
 
 export default function Home() {
   const router = useRouter();
-  const [lang, setLang] = useState<Language>('en');
+  const [lang, setLang] = useState<Language>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userLang');
+      if (saved === 'en' || saved === 'zh') return saved;
+    }
+    return 'en';
+  });
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -233,12 +239,18 @@ export default function Home() {
   const githubLinkRef = useRef<HTMLAnchorElement>(null);
   const t = translations[lang];
 
-  // Read lang from URL on mount
+  // Read lang from URL on mount, save to localStorage
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlLang = params.get('lang');
     if (urlLang === 'en' || urlLang === 'zh') {
       setLang(urlLang);
+      localStorage.setItem('userLang', urlLang);
+    } else {
+      const saved = localStorage.getItem('userLang');
+      if (saved === 'en' || saved === 'zh') {
+        setLang(saved);
+      }
     }
   }, []);
 
@@ -974,6 +986,7 @@ export default function Home() {
             <Select value={lang} onValueChange={(v) => {
               if (v) {
                 setLang(v as Language);
+                localStorage.setItem('userLang', v);
                 const url = new URL(window.location.href);
                 url.searchParams.set('lang', v);
                 window.history.pushState({}, '', url.toString());

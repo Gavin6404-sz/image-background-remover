@@ -106,7 +106,11 @@ function getQuotaTypeLabelEn(type: string): string {
 export default function ProfilePage() {
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<'en' | 'zh'>(() => {
-    // Default to 'en' - only use localStorage if user explicitly saved a preference
+    // Check localStorage first for saved preference
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userLang');
+      if (saved === 'en' || saved === 'zh') return saved;
+    }
     return 'en';
   });
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -145,14 +149,19 @@ export default function ProfilePage() {
     setSessionToken(token);
     setDisplayName(savedName || '');
     setMounted(true);
-    // Read lang from URL params
+    // Read lang from URL params first (for backward compatibility), then localStorage
     const params = new URLSearchParams(window.location.search);
     const urlLang = params.get('lang');
     if (urlLang === 'zh' || urlLang === 'en') {
       setLang(urlLang);
+      localStorage.setItem('userLang', urlLang);
     } else {
-      const browserLang = navigator.language.toLowerCase();
-      setLang(browserLang.startsWith('zh') ? 'zh' : 'en');
+      const saved = localStorage.getItem('userLang');
+      if (saved === 'en' || saved === 'zh') {
+        setLang(saved);
+      } else {
+        setLang('en');
+      }
     }
 
     // Fetch user info
