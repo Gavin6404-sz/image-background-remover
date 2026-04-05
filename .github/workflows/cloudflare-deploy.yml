@@ -12,13 +12,16 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm install --no-audit --prefer-offline
+        run: npm install --registry=https://registry.npmjs.org
 
       - name: Build
         run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
 
       - name: Deploy to Cloudflare Pages
         env:
