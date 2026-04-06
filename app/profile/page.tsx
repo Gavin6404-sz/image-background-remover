@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, User, Loader2, Check, X, ChevronLeft, ChevronRight, Filter, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -104,6 +105,7 @@ function getQuotaTypeLabelEn(type: string): string {
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<'en' | 'zh'>('en');
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -135,7 +137,7 @@ export default function ProfilePage() {
 
     if (!token) {
       // Not logged in, redirect to home
-      window.location.href = '/';
+      router.push('/');
       return;
     }
 
@@ -159,7 +161,7 @@ export default function ProfilePage() {
   // Redirect to home on load error
   useEffect(() => {
     if (loadError) {
-      window.location.href = '/';
+      router.push('/');
     }
   }, [loadError]);
 
@@ -331,7 +333,7 @@ export default function ProfilePage() {
     localStorage.removeItem('userName');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userPicture');
-    window.location.href = '/';
+    router.push('/');
   };
 
   const totalPages = Math.ceil(historyTotal / PAGE_SIZE);
@@ -360,7 +362,7 @@ export default function ProfilePage() {
             <span className="text-base font-semibold text-foreground">{lang === 'en' ? 'Profile' : '个人中心'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => { window.location.href = `/?lang=${lang}`; }} className="gap-1.5 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white border-0 shadow-lg shadow-blue-500/30">
+            <Button size="sm" onClick={() => { router.push(`/?lang=${lang}`); }} className="gap-1.5 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white border-0 shadow-lg shadow-blue-500/30">
               <ArrowLeft className="h-3.5 w-3.5" />
               {lang === 'en' ? 'Home' : '首页'}
             </Button>

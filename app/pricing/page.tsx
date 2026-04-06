@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -140,6 +140,7 @@ const pointsPlans = [
 ];
 
 export default function PricingPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Language>('en');
 
@@ -178,7 +179,7 @@ export default function PricingPage() {
             </div>
             <span className="text-base font-semibold text-foreground">{t.pricing}</span>
           </div>
-          <Button size="sm" onClick={() => { window.location.href = `/?lang=${lang}`; }} className="gap-1.5 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white border-0 shadow-lg shadow-blue-500/30">
+          <Button size="sm" onClick={() => { router.push(`/?lang=${lang}`); }} className="gap-1.5 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white border-0 shadow-lg shadow-blue-500/30">
             <ArrowLeft className="h-3.5 w-3.5" />
             {t.home}
           </Button>
