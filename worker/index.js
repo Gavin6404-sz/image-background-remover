@@ -745,6 +745,256 @@ export default {
         });
       }
 
+      // ========== PayPal Payment Endpoints ==========
+
+      // POST /api/points/buy - Create PayPal order for point package
+      if (path.endsWith('/api/points/buy') && request.method === 'POST') {
+        const userId = await getUserIdFromRequest(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { packageId, successUrl, cancelUrl } = await request.json();
+        if (!packageId) {
+          return new Response(JSON.stringify({ error: 'Missing packageId' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const pkg = await env.DB
+          .prepare('SELECT * FROM point_packages WHERE id = ? AND is_active = 1')
+          .bind(packageId)
+          .first();
+        if (!pkg) {
+          return new Response(JSON.stringify({ error: 'Package not found' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Create PayPal order
+        const paypalOrder = await createPayPalOrder({
+          amount: pkg.price_usd,
+          currency: 'USD',
+          description: `${pkg.display_name} - ${pkg.points} Credits`,
+          env,
+        });
+
+        if (!paypalOrder) {
+          return new Response(JSON.stringify({ error: 'Failed to create PayPal order' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Store pending purchase
+        const pendingId = generateSessionToken();
+        await env.DB
+          .prepare('INSERT INTO point_purchases (user_id, package_id, points, price_usd, paypal_order_id) VALUES (?, ?, ?, ?, ?)')
+          .bind(userId, pkg.id, pkg.points, pkg.price_usd, paypalOrder.id)
+          .run();
+
+        // Find approval URL
+        const approvalLink = paypalOrder.links?.find(l => l.rel === 'approve');
+        const approvalUrl = approvalLink?.href || paypalOrder.url;
+
+        return new Response(JSON.stringify({
+          success: true,
+          orderId: paypalOrder.id,
+          approvalUrl,
+          pendingId,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // POST /api/points/buy/verify - Verify PayPal payment and add points
+      if (path.endsWith('/api/points/buy/verify') && request.method === 'POST') {
+        const userId = await getUserIdFromRequest(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { orderId } = await request.json();
+        if (!orderId) {
+          return new Response(JSON.stringify({ error: 'Missing orderId' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Find pending purchase
+        const purchase = await env.DB
+          .prepare('SELECT * FROM point_purchases WHERE paypal_order_id = ? AND user_id = ?')
+          .bind(orderId, userId)
+          .first();
+        if (!purchase) {
+          return new Response(JSON.stringify({ error: 'Purchase not found' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Verify with PayPal
+        const verified = await verifyPayPalOrder(orderId, env);
+        if (!verified) {
+          return new Response(JSON.stringify({ error: 'Payment not verified' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Add points to user
+        await env.DB
+          .prepare('UPDATE user_points SET points_balance = points_balance + ?, total_purchased = total_purchased + ?, updated_at = ? WHERE user_id = ?')
+          .bind(purchase.points, purchase.points, Math.floor(Date.now() / 1000), userId)
+          .run();
+
+        // If no user_points record exists, create one
+        const existingPoints = await env.DB
+          .prepare('SELECT * FROM user_points WHERE user_id = ?')
+          .bind(userId)
+          .first();
+        if (!existingPoints) {
+          await env.DB
+            .prepare('INSERT INTO user_points (user_id, points_balance, total_purchased) VALUES (?, ?, ?)')
+            .bind(userId, purchase.points, purchase.points)
+            .run();
+        }
+
+        // Record transaction
+        await env.DB
+          .prepare('INSERT INTO quota_transactions (user_id, quota_type, amount, reason) VALUES (?, ?, ?, ?)')
+          .bind(userId, 'points', purchase.points, '购买积分')
+          .run();
+
+        // Get updated balance
+        const updatedPoints = await env.DB
+          .prepare('SELECT points_balance FROM user_points WHERE user_id = ?')
+          .bind(userId)
+          .first();
+
+        return new Response(JSON.stringify({
+          success: true,
+          pointsAdded: purchase.points,
+          balance: updatedPoints?.points_balance || purchase.points,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // POST /api/subscribe - Create PayPal subscription for subscription plan
+      if (path.endsWith('/api/subscribe') && request.method === 'POST') {
+        const userId = await getUserIdFromRequest(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { planId, successUrl, cancelUrl } = await request.json();
+        if (!planId) {
+          return new Response(JSON.stringify({ error: 'Missing planId' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const plan = await env.DB
+          .prepare('SELECT * FROM subscription_plans WHERE id = ? AND is_active = 1')
+          .bind(planId)
+          .first();
+        if (!plan) {
+          return new Response(JSON.stringify({ error: 'Plan not found' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Create PayPal order for subscription (using Orders API as subscription)
+        const paypalOrder = await createPayPalOrder({
+          amount: plan.price_usd,
+          currency: 'USD',
+          description: `${plan.display_name} Subscription - ${plan.quota_monthly} credits/month`,
+          env,
+        });
+
+        if (!paypalOrder) {
+          return new Response(JSON.stringify({ error: 'Failed to create PayPal order' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Store pending subscription
+        const pendingId = generateSessionToken();
+        await env.DB
+          .prepare('INSERT INTO user_subscriptions (user_id, plan_id, status, monthly_used, last_reset_date, paypal_subscription_id) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(userId, plan.id, 'pending', 0, new Date().toISOString().slice(0, 7), paypalOrder.id)
+          .run();
+
+        const approvalLink = paypalOrder.links?.find(l => l.rel === 'approve');
+        const approvalUrl = approvalLink?.href || paypalOrder.url;
+
+        return new Response(JSON.stringify({
+          success: true,
+          orderId: paypalOrder.id,
+          approvalUrl,
+          pendingId,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // POST /api/subscribe/verify - Verify PayPal subscription payment
+      if (path.endsWith('/api/subscribe/verify') && request.method === 'POST') {
+        const userId = await getUserIdFromRequest(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { orderId } = await request.json();
+        if (!orderId) {
+          return new Response(JSON.stringify({ error: 'Missing orderId' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Verify with PayPal
+        const verified = await verifyPayPalOrder(orderId, env);
+        if (!verified) {
+          return new Response(JSON.stringify({ error: 'Payment not verified' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Update subscription status
+        await env.DB
+          .prepare('UPDATE user_subscriptions SET status = ?, started_at = ? WHERE user_id = ? AND paypal_subscription_id = ?')
+          .bind('active', Math.floor(Date.now() / 1000), userId, orderId)
+          .run();
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Subscription activated',
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1041,6 +1291,88 @@ async function getGitHubUser(accessToken) {
     return null;
   }
   return await response.json();
+}
+
+// ========== PayPal Helper Functions ==========
+
+// Get PayPal access token
+async function getPayPalAccessToken(env) {
+  const clientId = env.PAYPAL_CLIENT_ID;
+  const clientSecret = env.PAYPAL_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    console.error('PayPal credentials not configured');
+    return null;
+  }
+
+  const credentials = btoa(`${clientId}:${clientSecret}`);
+  const response = await fetch('https://api-m.paypal.com/v1/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  if (!response.ok) {
+    console.error('PayPal token error:', await response.text());
+    return null;
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+// Create PayPal order (for point purchases and subscriptions)
+async function createPayPalOrder({ amount, currency, description, env }) {
+  const accessToken = await getPayPalAccessToken(env);
+  if (!accessToken) return null;
+
+  const response = await fetch('https://api-m.paypal.com/v2/checkout/orders', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'PayPal-Request-Id': `order-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    },
+    body: JSON.stringify({
+      intent: 'CAPTURE',
+      purchase_units: [{
+        amount: {
+          currency_code: currency,
+          value: amount.toFixed(2),
+        },
+        description,
+      }],
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('PayPal create order error:', await response.text());
+    return null;
+  }
+
+  return await response.json();
+}
+
+// Verify PayPal order has been captured
+async function verifyPayPalOrder(orderId, env) {
+  const accessToken = await getPayPalAccessToken(env);
+  if (!accessToken) return false;
+
+  const response = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderId}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    console.error('PayPal verify order error:', await response.text());
+    return false;
+  }
+
+  const order = await response.json();
+  return order.status === 'COMPLETED' || order.status === 'APPROVED';
 }
 
 // Helper: Get user_id from request session token
