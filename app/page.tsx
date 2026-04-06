@@ -84,6 +84,8 @@ const translations = {
     bgGold: 'Gold',
     bgPurple: 'Purple',
     footer: 'Powered by Remove.bg',
+    contact: 'Contact',
+    privacy: 'Privacy Policy',
     success: 'Background removed successfully!',
     downloaded: 'Image downloaded!',
     errorType: 'Only JPG and PNG are supported',
@@ -144,6 +146,8 @@ const translations = {
     bgGold: '金色',
     bgPurple: '紫色',
     footer: '由 Remove.bg 提供支持',
+    contact: '联系我们',
+    privacy: '隐私政策',
     success: '背景已成功消除！',
     downloaded: '图片已下载！',
     errorType: '仅支持 JPG 和 PNG 格式',
@@ -1255,11 +1259,19 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="py-2 px-4">
-        <div className="container mx-auto text-center">
+      <footer className="py-3 px-4 border-t">
+        <div className="container mx-auto text-center flex flex-col sm:flex-row items-center justify-center gap-3">
           <p className="text-sm text-muted-foreground">
             {t.footer} · <span className="text-orange-500">✨</span>
           </p>
+          <div className="flex items-center gap-4 text-sm">
+            <a href={`mailto:support@imagetoolbox.online`} className="text-muted-foreground hover:text-orange-500 transition-colors">
+              {t.contact}
+            </a>
+            <a href={`/privacy?lang=${lang}`} className="text-muted-foreground hover:text-orange-500 transition-colors">
+              {t.privacy}
+            </a>
+          </div>
         </div>
       </footer>
 
