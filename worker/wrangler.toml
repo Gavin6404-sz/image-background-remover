@@ -2,6 +2,7 @@ name = "image-toolbox-api"
 main = "index.js"
 compatibility_date = "2026-03-27"
 workers_dev = true
+migrations_dir = "migrations"
 
 # D1 Database binding
 [[d1_databases]]
@@ -9,9 +10,8 @@ binding = "DB"
 database_name = "image-toolbox-users"
 database_id = "4babd4a4-f671-4cef-ba09-41c8fbf130c1"
 
-# Environment variables
+# Environment variables (secrets should be set via `wrangler secret put`)
 [vars]
 GOOGLE_CLIENT_ID = "300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com"
 GITHUB_CLIENT_ID = "Ov23li7icTBHnxxbd2ST"
-GITHUB_CLIENT_SECRET = "c2cec31679ce3dec9aa3a980e48c656bf1ab5adf"
 BCRYPT_SALT_ROUNDS = "10"
