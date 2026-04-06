@@ -360,11 +360,11 @@ export default function ProfilePage() {
             <span className="text-base font-semibold text-foreground">{lang === 'en' ? 'Profile' : '个人中心'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => { window.location.href = `/?lang=${lang}`; }} className="gap-1.5 text-muted-foreground border-muted-200 hover:text-foreground">
+            <Button size="sm" onClick={() => { window.location.href = `/?lang=${lang}`; }} className="gap-1.5 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white border-0 shadow-lg shadow-blue-500/30">
               <ArrowLeft className="h-3.5 w-3.5" />
               {lang === 'en' ? 'Home' : '首页'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout} disabled={loggingOut} className="gap-1.5 text-muted-foreground border-muted-200 hover:text-foreground hover:border-destructive hover:text-destructive">
+            <Button size="sm" onClick={handleLogout} disabled={loggingOut} className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-0 shadow-lg shadow-orange-500/30">
               {loggingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
               {lang === 'en' ? 'Sign Out' : '退出'}
             </Button>
