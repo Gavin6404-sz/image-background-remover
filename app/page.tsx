@@ -1265,9 +1265,7 @@ export default function Home() {
             {t.footer} · <span className="text-orange-500">✨</span>
           </p>
           <div className="flex items-center gap-4 text-sm">
-            <a href={`mailto:support@imagetoolbox.online`} className="text-muted-foreground hover:text-orange-500 transition-colors">
-              {t.contact}
-            </a>
+            <span className="text-muted-foreground">support@imagetoolbox.online</span>
             <a href={`/privacy?lang=${lang}`} className="text-muted-foreground hover:text-orange-500 transition-colors">
               {t.privacy}
             </a>
