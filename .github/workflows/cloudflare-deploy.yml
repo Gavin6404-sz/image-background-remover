@@ -41,5 +41,5 @@ jobs:
           curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/${{ vars.CLOUDFLARE_ZONE_ID }}/dns_records/${{ vars.CLOUDFLARE_DNS_RECORD_ID }}" \
             -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"content":"image-background-remover-bz5.pages.dev","name":"www.imagetoolbox.online","type":"CNAME"}' \
+            -d '{"content":"production.image-background-remover-bz5.pages.dev","name":"www.imagetoolbox.online","type":"CNAME"}' \
             | python3 -c "import sys,json; d=json.load(sys.stdin); print('DNS updated:', 'success' if d.get('success') else d.get('errors'))"
