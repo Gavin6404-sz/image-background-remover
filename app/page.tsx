@@ -95,6 +95,7 @@ const translations = {
     welcome: 'Welcome',
     loginSuccess: 'Login successful!',
     loginError: 'Login failed',
+    pricing: 'Pricing',
   },
   zh: {
     title: '背景消除器',
@@ -154,6 +155,7 @@ const translations = {
     welcome: '欢迎',
     loginSuccess: '登录成功！',
     loginError: '登录失败',
+    pricing: '定价',
   }
 };
 
@@ -743,7 +745,14 @@ export default function Home() {
           </div>
 
           {/* Right: User actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <a
+              href={`/pricing?lang=${lang}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 border border-purple-300 hover:from-purple-200 hover:to-pink-200 transition-all text-sm font-semibold text-purple-700 hover:text-purple-800"
+            >
+              <span>💎</span>
+              <span>{t.pricing}</span>
+            </a>
             {user ? (
               <div className="flex items-center gap-3">
                 <a
