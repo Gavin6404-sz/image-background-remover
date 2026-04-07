@@ -182,7 +182,7 @@ function PricingContent() {
           },
           body: JSON.stringify({ orderId }),
         });
-        const data = await res.json();
+        const data = await res.json() as { success?: boolean; approvalUrl?: string; error?: string };
         if (data.success) {
           toast.success(t.paymentSuccess);
         } else {
@@ -238,7 +238,7 @@ function PricingContent() {
         body: JSON.stringify({ packageId: type === 'points' ? id : undefined, planId: type === 'subscription' ? id : undefined, successUrl, cancelUrl }),
       });
 
-      const data = await res.json();
+      const data = await res.json() as { success?: boolean; approvalUrl?: string; error?: string };
 
       if (data.approvalUrl) {
         // Redirect to PayPal
