@@ -842,6 +842,13 @@ export default {
           });
         }
 
+        // Check if already processed
+        if (purchase.status === 'completed') {
+          return new Response(JSON.stringify({ success: true, message: 'Already processed' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         // Verify with PayPal
         const verified = await verifyPayPalOrder(orderId, env);
         if (!verified) {
@@ -852,17 +859,16 @@ export default {
         }
 
         // Add points to user
-        await env.DB
-          .prepare('UPDATE user_points SET points_balance = points_balance + ?, total_purchased = total_purchased + ?, updated_at = ? WHERE user_id = ?')
-          .bind(purchase.points, purchase.points, Math.floor(Date.now() / 1000), userId)
-          .run();
-
-        // If no user_points record exists, create one
         const existingPoints = await env.DB
           .prepare('SELECT * FROM user_points WHERE user_id = ?')
           .bind(userId)
           .first();
-        if (!existingPoints) {
+        if (existingPoints) {
+          await env.DB
+            .prepare('UPDATE user_points SET points_balance = points_balance + ?, total_purchased = total_purchased + ?, updated_at = ? WHERE user_id = ?')
+            .bind(purchase.points, purchase.points, Math.floor(Date.now() / 1000), userId)
+            .run();
+        } else {
           await env.DB
             .prepare('INSERT INTO user_points (user_id, points_balance, total_purchased) VALUES (?, ?, ?)')
             .bind(userId, purchase.points, purchase.points)
@@ -873,6 +879,12 @@ export default {
         await env.DB
           .prepare('INSERT INTO quota_transactions (user_id, quota_type, amount, reason) VALUES (?, ?, ?, ?)')
           .bind(userId, 'points', purchase.points, '购买积分')
+          .run();
+
+        // Mark as completed
+        await env.DB
+          .prepare('UPDATE point_purchases SET status = ? WHERE paypal_order_id = ?')
+          .bind('completed', orderId)
           .run();
 
         // Get updated balance
@@ -972,6 +984,24 @@ export default {
           });
         }
 
+        // Find subscription record
+        const sub = await env.DB
+          .prepare('SELECT * FROM user_subscriptions WHERE paypal_subscription_id = ? AND user_id = ?')
+          .bind(orderId, userId)
+          .first();
+        if (!sub) {
+          return new Response(JSON.stringify({ error: 'Subscription not found' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (sub.status === 'active') {
+          return new Response(JSON.stringify({ success: true, message: 'Already active' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         // Verify with PayPal
         const verified = await verifyPayPalOrder(orderId, env);
         if (!verified) {
@@ -983,8 +1013,8 @@ export default {
 
         // Update subscription status
         await env.DB
-          .prepare('UPDATE user_subscriptions SET status = ?, started_at = ? WHERE user_id = ? AND paypal_subscription_id = ?')
-          .bind('active', Math.floor(Date.now() / 1000), userId, orderId)
+          .prepare('UPDATE user_subscriptions SET status = ?, started_at = ? WHERE paypal_subscription_id = ? AND user_id = ?')
+          .bind('active', Math.floor(Date.now() / 1000), orderId, userId)
           .run();
 
         return new Response(JSON.stringify({
@@ -1356,10 +1386,12 @@ async function createPayPalOrder({ amount, currency, description, env }) {
 }
 
 // Verify PayPal order has been captured
+// Returns true if payment is successfully captured
 async function verifyPayPalOrder(orderId, env) {
   const accessToken = await getPayPalAccessToken(env);
   if (!accessToken) return false;
 
+  // Get order status
   const response = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderId}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -1372,7 +1404,32 @@ async function verifyPayPalOrder(orderId, env) {
   }
 
   const order = await response.json();
-  return order.status === 'COMPLETED' || order.status === 'APPROVED';
+
+  // Already captured
+  if (order.status === 'COMPLETED') {
+    return true;
+  }
+
+  // Order approved but not captured yet - capture it now
+  if (order.status === 'APPROVED') {
+    const captureResponse = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!captureResponse.ok) {
+      console.error('PayPal capture error:', await captureResponse.text());
+      return false;
+    }
+
+    const captureResult = await captureResponse.json();
+    return captureResult.status === 'COMPLETED';
+  }
+
+  return false;
 }
 
 // Helper: Get user_id from request session token

@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS point_purchases (
   points INTEGER NOT NULL,
   price_usd REAL NOT NULL,
   paypal_order_id TEXT,
+  status TEXT DEFAULT 'pending',
   created_at INTEGER DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
