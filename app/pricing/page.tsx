@@ -146,8 +146,8 @@ function PricingContent() {
           fetch(`${API_BASE_URL}/api/plans/subscription`),
           fetch(`${API_BASE_URL}/api/plans/points`),
         ]);
-        const subData = await subRes.json();
-        const pointsData = await pointsRes.json();
+        const subData = await subRes.json() as { plans?: Array<{ id: number; plan_name: string; display_name: string; quota_monthly: number; price_usd: number }> };
+        const pointsData = await pointsRes.json() as { packages?: Array<{ id: number; package_name: string; display_name: string; points: number; price_usd: number }> };
         setPlans({
           subscriptions: subData.plans || [],
           points: pointsData.packages || [],
