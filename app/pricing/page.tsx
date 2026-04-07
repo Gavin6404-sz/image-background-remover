@@ -51,10 +51,11 @@ const translations = {
     home: 'Home',
     loading: 'Loading...',
     processing: 'Redirecting to PayPal...',
-    paymentSuccess: 'Payment successful!',
+    paymentSuccess: 'Payment successful! You will receive a confirmation email shortly.',
     paymentFailed: 'Payment failed. Please try again.',
     pleaseLogin: 'Please sign in to continue',
     loginRequired: 'Sign In',
+    paymentRedirecting: 'Please complete payment on PayPal. Your credits will be added automatically.',
   },
   zh: {
     pricing: '定价方案',
@@ -92,10 +93,11 @@ const translations = {
     home: '返回首页',
     loading: '加载中...',
     processing: '正在跳转 PayPal...',
-    paymentSuccess: '支付成功！',
+    paymentSuccess: '支付成功！我们正在处理您的订单。',
     paymentFailed: '支付失败，请重试。',
     pleaseLogin: '请先登录再购买',
     loginRequired: '登录',
+    paymentRedirecting: '请在 PayPal 完成支付，积分将自动添加到您的账户。',
   },
 };
 
@@ -159,44 +161,12 @@ function PricingContent() {
     if (mounted) fetchPlans();
   }, [mounted]);
 
-  // Handle PayPal return
+  // Handle PayPal return - Webhook mode: just show message, fulfillment via webhook
   useEffect(() => {
     if (!mounted || !orderId || !type) return;
     const t = translations[lang];
-
-    async function verify() {
-      const endpoint = type === 'points' ? '/api/points/buy/verify' : '/api/subscribe/verify';
-      const token = getCookie('token') || localStorage.getItem('sessionToken');
-      if (!token) {
-        toast.error(t.pleaseLogin);
-        router.replace(`/${type === 'points' ? 'pricing' : 'pricing'}?lang=${lang}`);
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ orderId }),
-        });
-        const data = await res.json() as { success?: boolean; approvalUrl?: string; error?: string };
-        if (data.success) {
-          toast.success(t.paymentSuccess);
-        } else {
-          toast.error(data.error || t.paymentFailed);
-        }
-      } catch {
-        toast.error(t.paymentFailed);
-      } finally {
-        // Clean URL
-        router.replace(`/${type === 'points' ? 'pricing' : 'pricing'}?lang=${lang}`);
-      }
-    }
-
-    verify();
+    toast.success(t.paymentRedirecting);
+    router.replace(`/pricing?lang=${lang}`);
   }, [mounted, orderId, type, lang]);
 
   if (!mounted) {

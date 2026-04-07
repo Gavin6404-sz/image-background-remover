@@ -14,3 +14,4 @@ database_id = "4babd4a4-f671-4cef-ba09-41c8fbf130c1"
 GOOGLE_CLIENT_ID = "300047558352-79f5fjc6vtdoljont9ukuvdme2g4e65h.apps.googleusercontent.com"
 GITHUB_CLIENT_ID = "Ov23li7icTBHnxxbd2ST"
 BCRYPT_SALT_ROUNDS = "10"
+PAYPAL_WEBHOOK_ID = ""  # Set via `wrangler secret put PAYPAL_WEBHOOK_ID`

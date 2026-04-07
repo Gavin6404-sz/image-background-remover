@@ -1025,6 +1025,83 @@ export default {
         });
       }
 
+      // POST /api/webhook/paypal - PayPal Webhook handler
+      if (path.endsWith('/api/webhook/paypal') && request.method === 'POST') {
+        // Verify webhook signature
+        const verification = await verifyPayPalWebhook(request, env);
+        if (!verification.verified) {
+          console.error('Webhook verification failed:', verification.error);
+          return new Response(JSON.stringify({ error: 'Webhook verification failed' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const event = verification.event;
+        const eventType = event.event_type;
+
+        if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+          const orderId = event.resource?.supplementary_data?.related_ids?.order_id
+            || event.resource?.id;
+
+          if (orderId) {
+            // Find purchase by order ID
+            const purchase = await env.DB
+              .prepare('SELECT * FROM point_purchases WHERE paypal_order_id = ? AND status = ?')
+              .bind(orderId, 'pending')
+              .first();
+
+            if (purchase) {
+              // Add points
+              const existingPoints = await env.DB
+                .prepare('SELECT * FROM user_points WHERE user_id = ?')
+                .bind(purchase.user_id)
+                .first();
+              if (existingPoints) {
+                await env.DB
+                  .prepare('UPDATE user_points SET points_balance = points_balance + ?, total_purchased = total_purchased + ?, updated_at = ? WHERE user_id = ?')
+                  .bind(purchase.points, purchase.points, Math.floor(Date.now() / 1000), purchase.user_id)
+                  .run();
+              } else {
+                await env.DB
+                  .prepare('INSERT INTO user_points (user_id, points_balance, total_purchased) VALUES (?, ?, ?)')
+                  .bind(purchase.user_id, purchase.points, purchase.points)
+                  .run();
+              }
+
+              await env.DB
+                .prepare('INSERT INTO quota_transactions (user_id, quota_type, amount, reason) VALUES (?, ?, ?, ?)')
+                .bind(purchase.user_id, 'points', purchase.points, '购买积分-Webhook')
+                .run();
+
+              await env.DB
+                .prepare('UPDATE point_purchases SET status = ? WHERE paypal_order_id = ?')
+                .bind('completed', orderId)
+                .run();
+
+              console.log(`Points added via webhook for order ${orderId}`);
+            }
+
+            // Also check subscription
+            const sub = await env.DB
+              .prepare('SELECT * FROM user_subscriptions WHERE paypal_subscription_id = ? AND status = ?')
+              .bind(orderId, 'pending')
+              .first();
+            if (sub) {
+              await env.DB
+                .prepare('UPDATE user_subscriptions SET status = ?, started_at = ? WHERE paypal_subscription_id = ?')
+                .bind('active', Math.floor(Date.now() / 1000), orderId)
+                .run();
+              console.log(`Subscription activated via webhook for order ${orderId}`);
+            }
+          }
+        }
+
+        return new Response(JSON.stringify({ received: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1430,6 +1507,60 @@ async function verifyPayPalOrder(orderId, env) {
   }
 
   return false;
+}
+
+// Verify PayPal webhook signature
+async function verifyPayPalWebhook(request, env) {
+  const accessToken = await getPayPalAccessToken(env);
+  if (!accessToken) return { verified: false, error: 'No access token' };
+
+  const payload = await request.text();
+  const headers = Object.fromEntries(request.headers.entries());
+  const webhookId = env.PAYPAL_WEBHOOK_ID;
+
+  if (!webhookId) {
+    console.error('PAYPAL_WEBHOOK_ID not configured');
+    return { verified: false, error: 'Webhook ID not configured' };
+  }
+
+  const verificationBody = {
+    auth_algo: headers['paypal-auth-algo'],
+    cert_url: headers['paypal-cert-url'],
+    transmission_id: headers['paypal-transmission-id'],
+    transmission_sig: headers['paypal-transmission-sig'],
+    transmission_time: headers['paypal-transmission-time'],
+    webhook_id: webhookId,
+    webhook_event: payload,
+  };
+
+  const response = await fetch('https://api-m.paypal.com/v2/notifications/verify-webhook-signature', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(verificationBody),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('Webhook verification API error:', text);
+    return { verified: false, error: text };
+  }
+
+  const result = await response.json();
+  if (result.verification_status !== 'SUCCESS') {
+    return { verified: false, error: result };
+  }
+
+  let event;
+  try {
+    event = JSON.parse(payload);
+  } catch {
+    return { verified: false, error: 'Invalid JSON payload' };
+  }
+
+  return { verified: true, event };
 }
 
 // Helper: Get user_id from request session token
