@@ -573,6 +573,17 @@ export default {
         });
       }
 
+      // ========== Config Endpoints ==========
+
+      // GET /api/config/paypal - Get PayPal mode and client ID for frontend SDK
+      if (path.endsWith('/api/config/paypal') && request.method === 'GET') {
+        const mode = env.PAYPAL_MODE || 'sandbox';
+        const clientId = env.PAYPAL_CLIENT_ID || '';
+        return new Response(JSON.stringify({ mode, clientId }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // ========== Plans Endpoints ==========
 
       // GET /api/plans/subscription - Get subscription plans
@@ -777,11 +788,16 @@ export default {
         }
 
         // Create PayPal order
+        const baseReturnUrl = 'https://www.imagetoolbox.online/pricing';
+        const paypalReturnUrl = `${baseReturnUrl}?type=points`;
+        const paypalCancelUrl = `${baseReturnUrl}?cancel=1`;
         const paypalOrder = await createPayPalOrder({
           amount: pkg.price_usd,
           currency: 'USD',
           description: `${pkg.display_name} - ${pkg.points} Credits`,
           env,
+          returnUrl: paypalReturnUrl,
+          cancelUrl: paypalCancelUrl,
         });
 
         if (!paypalOrder) {
@@ -801,6 +817,15 @@ export default {
         // Find approval URL
         const approvalLink = paypalOrder.links?.find(l => l.rel === 'approve');
         const approvalUrl = approvalLink?.href || paypalOrder.url;
+
+        return new Response(JSON.stringify({
+          success: true,
+          orderId: paypalOrder.id,
+          approvalUrl,
+          pendingId,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
 
         return new Response(JSON.stringify({
           success: true,
@@ -850,9 +875,21 @@ export default {
         }
 
         // Verify with PayPal
+        console.log('[/api/points/buy/verify] Starting for orderId:', orderId, 'userId:', userId, 'purchase status:', purchase.status);
         const verified = await verifyPayPalOrder(orderId, env);
+        console.log('[/api/points/buy/verify] verifyPayPalOrder result:', verified);
         if (!verified) {
-          return new Response(JSON.stringify({ error: 'Payment not verified' }), {
+          // Detailed diagnostic
+          const accessToken = await getPayPalAccessToken(env);
+          if (accessToken) {
+            const baseUrl = getPayPalBaseUrl(env);
+            const orderRes = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+            const orderData = orderRes.ok ? await orderRes.json() : { error: orderRes.statusText };
+            console.log('[/api/points/buy/verify] Direct PayPal order status:', JSON.stringify(orderData));
+          }
+          return new Response(JSON.stringify({ error: 'Payment not verified', orderId }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -932,11 +969,16 @@ export default {
         }
 
         // Create PayPal order for subscription (using Orders API as subscription)
+        const baseReturnUrl = 'https://www.imagetoolbox.online/pricing';
+        const paypalReturnUrl = `${baseReturnUrl}?type=subscription`;
+        const paypalCancelUrl = `${baseReturnUrl}?cancel=1`;
         const paypalOrder = await createPayPalOrder({
           amount: plan.price_usd,
           currency: 'USD',
           description: `${plan.display_name} Subscription - ${plan.quota_monthly} credits/month`,
           env,
+          returnUrl: paypalReturnUrl,
+          cancelUrl: paypalCancelUrl,
         });
 
         if (!paypalOrder) {
@@ -1402,6 +1444,12 @@ async function getGitHubUser(accessToken) {
 
 // ========== PayPal Helper Functions ==========
 
+// Get PayPal base URL based on mode (sandbox or live)
+function getPayPalBaseUrl(env) {
+  const mode = env.PAYPAL_MODE || 'live';
+  return mode === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+}
+
 // Get PayPal access token
 async function getPayPalAccessToken(env) {
   const clientId = env.PAYPAL_CLIENT_ID;
@@ -1411,8 +1459,9 @@ async function getPayPalAccessToken(env) {
     return null;
   }
 
+  const baseUrl = getPayPalBaseUrl(env);
   const credentials = btoa(`${clientId}:${clientSecret}`);
-  const response = await fetch('https://api-m.paypal.com/v1/oauth2/token', {
+  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
       'Authorization': `Basic ${credentials}`,
@@ -1431,27 +1480,36 @@ async function getPayPalAccessToken(env) {
 }
 
 // Create PayPal order (for point purchases and subscriptions)
-async function createPayPalOrder({ amount, currency, description, env }) {
+async function createPayPalOrder({ amount, currency, description, env, returnUrl, cancelUrl }) {
   const accessToken = await getPayPalAccessToken(env);
   if (!accessToken) return null;
 
-  const response = await fetch('https://api-m.paypal.com/v2/checkout/orders', {
+  const baseUrl = getPayPalBaseUrl(env);
+  const orderBody = {
+    intent: 'CAPTURE',
+    purchase_units: [{
+      amount: {
+        currency_code: currency,
+        value: amount.toFixed(2),
+      },
+      description,
+    }],
+  };
+  // Add redirect URLs if provided (for redirect-based checkout)
+  if (returnUrl || cancelUrl) {
+    orderBody.application_context = {
+      return_url: returnUrl || 'https://www.imagetoolbox.online/pricing',
+      cancel_url: cancelUrl || 'https://www.imagetoolbox.online/pricing',
+    };
+  }
+  const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'PayPal-Request-Id': `order-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     },
-    body: JSON.stringify({
-      intent: 'CAPTURE',
-      purchase_units: [{
-        amount: {
-          currency_code: currency,
-          value: amount.toFixed(2),
-        },
-        description,
-      }],
-    }),
+    body: JSON.stringify(orderBody),
   });
 
   if (!response.ok) {
@@ -1466,21 +1524,28 @@ async function createPayPalOrder({ amount, currency, description, env }) {
 // Returns true if payment is successfully captured
 async function verifyPayPalOrder(orderId, env) {
   const accessToken = await getPayPalAccessToken(env);
-  if (!accessToken) return false;
+  if (!accessToken) {
+    console.error('[verifyPayPalOrder] No access token');
+    return false;
+  }
+
+  const baseUrl = getPayPalBaseUrl(env);
 
   // Get order status
-  const response = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderId}`, {
+  console.log('[verifyPayPalOrder] Fetching order status for:', orderId);
+  const response = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
     },
   });
 
   if (!response.ok) {
-    console.error('PayPal verify order error:', await response.text());
+    console.error('[verifyPayPalOrder] Failed to get order:', response.status, await response.text());
     return false;
   }
 
   const order = await response.json();
+  console.log('[verifyPayPalOrder] Order status:', order.status, 'orderId:', orderId);
 
   // Already captured
   if (order.status === 'COMPLETED') {
@@ -1489,7 +1554,8 @@ async function verifyPayPalOrder(orderId, env) {
 
   // Order approved but not captured yet - capture it now
   if (order.status === 'APPROVED') {
-    const captureResponse = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderId}/capture`, {
+    console.log('[verifyPayPalOrder] Order APPROVED, attempting capture...');
+    const captureResponse = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -1498,14 +1564,16 @@ async function verifyPayPalOrder(orderId, env) {
     });
 
     if (!captureResponse.ok) {
-      console.error('PayPal capture error:', await captureResponse.text());
+      console.error('[verifyPayPalOrder] Capture failed:', response.status, await captureResponse.text());
       return false;
     }
 
     const captureResult = await captureResponse.json();
+    console.log('[verifyPayPalOrder] Capture result:', captureResult.status);
     return captureResult.status === 'COMPLETED';
   }
 
+  console.log('[verifyPayPalOrder] Unexpected order status:', order.status);
   return false;
 }
 
@@ -1533,7 +1601,9 @@ async function verifyPayPalWebhook(request, env) {
     webhook_event: payload,
   };
 
-  const response = await fetch('https://api-m.paypal.com/v2/notifications/verify-webhook-signature', {
+  const baseUrl = getPayPalBaseUrl(env);
+
+  const response = await fetch(`${baseUrl}/v2/notifications/verify-webhook-signature`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,

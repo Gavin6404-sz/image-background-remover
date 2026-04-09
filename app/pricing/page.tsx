@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -143,7 +143,6 @@ function loadPayPalScript(clientId: string, mode: 'sandbox' | 'live'): Promise<v
 
 function PricingContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Language>('en');
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -152,15 +151,12 @@ function PricingContent() {
   const [showPayPalModal, setShowPayPalModal] = useState(false);
   const [payPalOrderId, setPayPalOrderId] = useState<string | null>(null);
   const [payPalConfig, setPayPalConfig] = useState<PayPalConfig | null>(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
   const [plans, setPlans] = useState<{
     subscriptions: Array<{ id: number; plan_name: string; display_name: string; quota_monthly: number; price_usd: number }>;
     points: Array<{ id: number; package_name: string; display_name: string; points: number; price_usd: number }>;
   }>({ subscriptions: [], points: [] });
-
-  const orderId = searchParams.get('orderId');
-  const status = searchParams.get('status');
-  const type = searchParams.get('type') as 'points' | 'subscription' | null;
 
   // Fetch PayPal config
   useEffect(() => {
@@ -214,13 +210,53 @@ function PricingContent() {
     if (mounted) fetchPlans();
   }, [mounted]);
 
-  // Handle PayPal return — show toast and redirect
+  // Handle PayPal return — call verify endpoint then redirect
+  // PayPal returns to return_url with ?type=points&token=XXX&PayerID=YYY
   useEffect(() => {
-    if (!mounted || !orderId || !type) return;
-    const t = translations[lang];
-    toast.success(t.paymentSuccess);
-    router.replace(`/pricing?lang=${lang}`);
-  }, [mounted, orderId, type, lang]);
+    if (!mounted) return;
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type') as 'points' | 'subscription' | null;
+    const paypalToken = params.get('token'); // PayPal orderId
+    const payerId = params.get('PayerID');
+    console.log('[PayPal return] params:', Object.fromEntries(params.entries()), 'payerId:', payerId);
+    if (!type || !paypalToken) {
+      console.log('[PayPal return] Missing type or token, skipping verify');
+      return;
+    }
+    const sessionToken = getCookie('token') || localStorage.getItem('sessionToken');
+    if (!sessionToken) {
+      console.log('[PayPal return] No session token found');
+      return;
+    }
+    const verifyEndpoint = type === 'points' ? '/api/points/buy/verify' : '/api/subscribe/verify';
+    async function verifyAndRedirect() {
+      setVerifyingPayment(true);
+      console.log('[PayPal return] Calling verify with orderId:', paypalToken, 'endpoint:', verifyEndpoint);
+      try {
+        const res = await fetch(`${API_BASE_URL}${verifyEndpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {}),
+          },
+          body: JSON.stringify({ orderId: paypalToken }),
+        });
+        const data = await res.json() as { success?: boolean; error?: string };
+        console.log('[PayPal return] Verify response:', data);
+        if (data.success) {
+          toast.success(translations[lang].paymentSuccess);
+        } else {
+          toast.error(data.error || translations[lang].paymentFailed);
+        }
+      } catch (e) {
+        console.error('[PayPal return] Verify error:', e);
+        toast.error(translations[lang].paymentFailed);
+      }
+      setVerifyingPayment(false);
+      router.replace(`/pricing?lang=${lang}`);
+    }
+    verifyAndRedirect();
+  }, [mounted, lang]);
 
   // Render PayPal buttons when modal opens and orderId is ready
   useEffect(() => {
@@ -235,9 +271,27 @@ function PricingContent() {
         window.paypal.Buttons({
           style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' },
           createOrder: () => payPalOrderId,
-          onApprove: () => {
-            const t = translations[lang];
-            toast.success(t.paymentSuccess);
+          onApprove: async () => {
+            const token = getCookie('token') || localStorage.getItem('sessionToken');
+            const verifyEndpoint = payingType === 'points' ? '/api/points/buy/verify' : '/api/subscribe/verify';
+            try {
+              const res = await fetch(`${API_BASE_URL}${verifyEndpoint}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ orderId: payPalOrderId }),
+              });
+              const data = await res.json() as { success?: boolean; error?: string };
+              if (data.success) {
+                toast.success(translations[lang].paymentSuccess);
+              } else {
+                toast.error(data.error || translations[lang].paymentFailed);
+              }
+            } catch {
+              toast.error(translations[lang].paymentFailed);
+            }
             setShowPayPalModal(false);
             setPayingPlanId(null);
             setPayingType(null);
@@ -286,12 +340,13 @@ function PricingContent() {
 
       const data = await res.json() as { success?: boolean; orderId?: string; approvalUrl?: string; error?: string };
 
-      if (data.orderId) {
+      if (data.approvalUrl) {
+        // Always redirect to PayPal for reliable checkout
+        window.location.href = data.approvalUrl;
+      } else if (data.orderId) {
+        // Fallback: use embedded modal (less reliable in sandbox)
         setPayPalOrderId(data.orderId);
         setShowPayPalModal(true);
-      } else if (data.approvalUrl) {
-        // Fallback to redirect if no orderId
-        window.location.href = data.approvalUrl;
       } else {
         toast.error(data.error || translations[lang].paymentFailed);
         setPayingPlanId(null);
@@ -325,6 +380,17 @@ function PricingContent() {
 
   return (
     <>
+      {/* Payment verification loading overlay */}
+      {verifyingPayment && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm mx-4 text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-purple-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">Verifying payment...</h3>
+            <p className="text-sm text-muted-foreground">Please wait while we confirm your payment with PayPal.</p>
+          </div>
+        </div>
+      )}
+
       <div className="min-h-screen bg-gradient-to-br from-violet-100 via-purple-50 to-sky-100">
         <header className="sticky top-0 z-[100] border-b bg-background/95 backdrop-blur-md">
           <div className="flex items-center justify-between px-4 py-3 max-w-5xl mx-auto">
